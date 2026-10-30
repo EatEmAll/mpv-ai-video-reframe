@@ -88,24 +88,37 @@ def private_dir(path):
     return path
 
 
+def _resolve_links(path):
+    """Follow links in any component, checking each link's owner and parent."""
+    current, pending, followed = Path(path.anchor), list(path.parts[1:]), 0
+    while pending:
+        part = pending.pop(0)
+        if part == "..":
+            # current is fully resolved, so its lexical parent is the real one.
+            current = current.parent
+            continue
+        candidate = current / part
+        if not candidate.is_symlink():
+            current = candidate
+            continue
+        followed += 1
+        if followed > 40:
+            raise SecurityError("Interpreter link chain exceeds limit")
+        trusted_path(current)
+        if candidate.lstat().st_uid not in (0, os.getuid()):
+            raise SecurityError("Interpreter link is not owned by this user/root")
+        target = candidate.readlink()
+        if target.is_absolute():
+            current = Path(target.anchor)
+        pending[:0] = [p for p in target.parts if p != target.anchor]
+    return current
+
+
 def trusted_executable(path):
-    """Permit the owned interpreter symlinks used by Unix virtual environments."""
+    """Permit owned interpreter links, including uv's linked version directory."""
     path = Path(path).absolute()
     if os.name != "nt":
-        for _ in range(40):
-            if not path.is_symlink():
-                break
-            trusted_path(path.parent)
-            if path.lstat().st_uid not in (0, os.getuid()):
-                raise SecurityError("Interpreter link is not owned by this user/root")
-            target = path.readlink()
-            path = Path(
-                os.path.abspath(
-                    target if target.is_absolute() else path.parent / target
-                )
-            )
-        else:
-            raise SecurityError("Interpreter link chain exceeds limit")
+        path = _resolve_links(path)
     path = trusted_path(path)
     if not path.is_file():
         raise SecurityError("Executable must be an existing trusted file")

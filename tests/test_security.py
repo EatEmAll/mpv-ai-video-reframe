@@ -4,6 +4,8 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 from threading import Event
 
 import pytest
@@ -11,7 +13,13 @@ from test_managed import plugin
 
 from reframe.managed import Session
 from reframe.models import select_model, verify_weights
-from reframe.security import SecurityError, private_dir, trusted_path, validate_endpoint
+from reframe.security import (
+    SecurityError,
+    private_dir,
+    trusted_executable,
+    trusted_path,
+    validate_endpoint,
+)
 
 
 def protocol():
@@ -276,17 +284,91 @@ def test_recovery_preserves_post_crash_edits(tmp_path, monkeypatch):
 def test_unix_private_socket_and_unsafe_parent(tmp_path):
     import socket
 
-    root = private_dir(tmp_path / "runtime")
-    endpoint = root / "ipc"
-    with socket.socket(socket.AF_UNIX) as sock:
-        sock.bind(str(endpoint))
-        validate_endpoint(str(endpoint), harden=True)
-        assert endpoint.stat().st_mode & 0o777 == 0o600
-        root.chmod(0o755)
-        with pytest.raises(SecurityError):
-            validate_endpoint(str(endpoint))
+    # Socket paths have a short kernel limit; a deep checkout must not fail here.
+    with tempfile.TemporaryDirectory(prefix="rf") as short:
+        root = private_dir(Path(short) / "r")
+        endpoint = root / "ipc"
+        with socket.socket(socket.AF_UNIX) as sock:
+            sock.bind(str(endpoint))
+            validate_endpoint(str(endpoint), harden=True)
+            assert endpoint.stat().st_mode & 0o777 == 0o600
+            root.chmod(0o755)
+            with pytest.raises(SecurityError):
+                validate_endpoint(str(endpoint))
     with pytest.raises(SecurityError):
         validate_endpoint("/" + "x" * 101)
+
+
+def unix_interpreter(tmp_path):
+    """Lay out a venv link through a linked version directory, as uv does."""
+    real = tmp_path / "cpython-3.12.14" / "bin" / "python3.12"
+    real.parent.mkdir(parents=True)
+    real.write_text("interpreter")
+    (tmp_path / "cpython-3.12").symlink_to(tmp_path / "cpython-3.12.14")
+    venv = tmp_path / "venv" / "bin"
+    venv.mkdir(parents=True)
+    (venv / "python").symlink_to(tmp_path / "cpython-3.12" / "bin" / "python3.12")
+    return venv / "python", real
+
+
+unix_only = pytest.mark.skipif(os.name == "nt", reason="Unix link semantics")
+
+
+@unix_only
+def test_executable_through_linked_version_directory(tmp_path):
+    python, real = unix_interpreter(tmp_path)
+    assert trusted_executable(python) == real
+
+
+@unix_only
+def test_executable_relative_and_dotdot_links_use_real_parents(tmp_path):
+    python, real = unix_interpreter(tmp_path)
+    (tmp_path / "elsewhere" / "deep").mkdir(parents=True)
+    (tmp_path / "hop").symlink_to(tmp_path / "elsewhere" / "deep")
+    # Lexical .. would give tmp_path/cpython...; the kernel uses hop's real parent.
+    (tmp_path / "elsewhere" / "python").write_text("real parent")
+    link = tmp_path / "venv" / "bin" / "dots"
+    link.symlink_to("../../hop/../python")
+    assert trusted_executable(link) == tmp_path / "elsewhere" / "python"
+    assert trusted_executable(python) == real
+
+
+@unix_only
+def test_executable_link_in_writable_directory_refused(tmp_path):
+    python, _ = unix_interpreter(tmp_path)
+    writable = tmp_path / "shared"
+    writable.mkdir()
+    writable.chmod(0o777)
+    (writable / "version").symlink_to(tmp_path / "cpython-3.12.14")
+    python.unlink()
+    python.symlink_to(writable / "version" / "bin" / "python3.12")
+    with pytest.raises(SecurityError):
+        trusted_executable(python)
+
+
+@unix_only
+def test_executable_writable_target_refused(tmp_path):
+    python, real = unix_interpreter(tmp_path)
+    real.chmod(0o777)
+    with pytest.raises(SecurityError):
+        trusted_executable(python)
+
+
+@unix_only
+def test_executable_link_loop_refused(tmp_path):
+    (tmp_path / "a").symlink_to(tmp_path / "b")
+    (tmp_path / "b").symlink_to(tmp_path / "a")
+    with pytest.raises(SecurityError):
+        trusted_executable(tmp_path / "a" / "python")
+
+
+@unix_only
+def test_executable_directory_refused(tmp_path):
+    python, real = unix_interpreter(tmp_path)
+    python.unlink()
+    python.symlink_to(real.parent)
+    with pytest.raises(SecurityError):
+        trusted_executable(python)
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Native Windows DACL/pipe regression")
@@ -407,9 +489,6 @@ def test_real_mpv_pipe_hardening_survives_connections():
         process.wait(timeout=5)
 
 
-@pytest.mark.skipif(
-    os.name != "nt", reason="Native Windows idle Lua/backend integration"
-)
 def test_real_lua_preflight_backend_wait_and_stop(tmp_path):
     from test_managed import ROOT
 
@@ -435,7 +514,7 @@ def test_real_lua_preflight_backend_wait_and_stop(tmp_path):
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        creationflags=subprocess.CREATE_NO_WINDOW,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         timeout=18,
     )
     text = log.read_text(encoding="utf-8", errors="replace")

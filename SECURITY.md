@@ -34,10 +34,10 @@ Never forward the pipe/socket, expose TCP IPC, or run the backend as a service.
 
 Use a private backend/configuration tree that other users cannot modify. Checks
 reject unsafe ownership, write permissions, links/reparse points and hard-linked
-installer targets. Unix virtual-environment interpreter links are permitted only
-from a trusted parent to a trusted resolved executable. System-owned Unix alias
-paths may require selecting a canonical path. Do not weaken permissions to bypass
-a failure. Edited configuration can select executable code and must be reviewed.
+installer targets. Unix interpreter links, including a linked version directory
+such as uv's, are permitted only when each link is user- or root-owned in a trusted
+parent and resolves to a trusted executable. Backend paths must still avoid links.
+Do not weaken permissions to bypass a failure. Edited configuration can select executable code and must be reviewed.
 Windows Unicode backend paths have unresolved Python editable-install/native CUDA
 loader failures in the [baseline assessment](SECURITY_REVIEW.md#validation-and-remaining-acceptance-gates).
 Ownership checks and `-I` do not resolve those compatibility failures.

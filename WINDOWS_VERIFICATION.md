@@ -1,7 +1,8 @@
 # Windows setup and repeatable verification
 
 This is a source preview, not a release or a platform-wide performance promise.
-Linux and macOS/MPS native verification remain outstanding. Keep issue #1 open.
+See [Linux verification](LINUX_VERIFICATION.md). macOS/MPS native verification
+remains outstanding. Keep issue #1 open.
 
 ## Supported installation boundary
 

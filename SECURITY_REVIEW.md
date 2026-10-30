@@ -335,3 +335,35 @@ independent-account Windows validation beyond restricted-token checks, external
 logged-in reporter submission and manual perceptual review remain unclaimed.
 The source is public and reporting is enabled, but no preview release/listing
 has been published by this work.
+
+
+## Native Linux verification (2026-10-31)
+
+Run on Omarchy x86_64 from a clean copy with mpv 0.41.0 and CPU inference; see
+[LINUX_VERIFICATION.md](LINUX_VERIFICATION.md). The first run found that
+`trusted_executable` rejected uv-managed interpreters, because uv links a version
+directory and only the final path component was followed. The documented install
+and every enable then failed closed. Links are now followed in any component. Each
+link must be user- or root-owned in a trusted parent, and the resolved file must
+pass `trusted_path`. Backend paths still reject links.
+
+Native checks confirmed `0700` runtime and session directories and a `0600` socket
+on the real script-created path, including under umask 000. Symlinked, permissive
+and regular-file runtime roots, unsafe endpoints, writable backends and interpreters
+were refused. Tampered, truncated, unknown and non-`.pt` models were refused before
+deserialization, confirmed by a pickle canary that never fired. A real root-owned
+peer was rejected through `SO_PEERCRED`. Installer link, hard-link, traversal and
+duplicate-key manifests were refused, and an interrupted upgrade recovered.
+
+`strace` across mpv and the backend recorded no Internet socket during playback,
+including with weights absent. This covers one run; it is not a universal offline
+guarantee. An OSV re-query returned 0 matches for 81 packages and the six pinned
+Ultralytics sources matched.
+
+Arch's mpv uses system FFmpeg 9.0.2, a release at or after the 9.0 line that
+FFmpeg's security page lists for all eight cited CVEs. This is version evidence;
+the distribution build was not inspected.
+
+**Not run:** separate-uid connection denial needs real privilege, which the test
+session lacked. `tests/native_unix_security.py` reports that as partial, with exit
+3. The earlier WSL run remains the only evidence for it.

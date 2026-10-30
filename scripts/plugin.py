@@ -296,6 +296,7 @@ def package(output):
             "WINDOWS_VERIFICATION.md",
             "WINDOWS_VERIFICATION_RESULTS.md",
             "WINDOWS_VERIFICATION_RESULTS.json",
+            "LINUX_VERIFICATION.md",
         )
     ]
     paths.extend(

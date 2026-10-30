@@ -33,7 +33,7 @@ def basename(value):
     return PureWindowsPath(value).name if "\\" in value else Path(value).name
 
 
-def summarize(directory, repeat):
+def summarize(directory, repeat, devices=None):
     if repeat < 2:
         raise ValueError("At least two repetitions are required")
     commands = json.loads((directory / "commands.json").read_text(encoding="utf-8"))
@@ -46,6 +46,7 @@ def summarize(directory, repeat):
             ("cuda-engine", "2160p60", [1, 2]),
             ("cpu-pt", "1080p30", [1]),
         )
+        if devices is None or device in devices
         for index in range(1, repeat + 1)
     }
     rows, sources = [], {}
@@ -120,10 +121,11 @@ def summarize(directory, repeat):
         and set(seen) == set(expected)
         and len(set(seen)) == len(seen)
         and not missing
-        and len(rows) == 9 * repeat
+        and len(rows) == sum(len(speeds) for speeds in expected.values())
     )
     return {
-        "expected_runs": 5 * repeat,
+        "devices": sorted(devices) if devices else "all",
+        "expected_runs": len(expected),
         "completed_commands": len(commands),
         "complete": complete,
         "missing": missing,
@@ -144,8 +146,9 @@ def main():
     parser.add_argument("directory", type=Path)
     parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--devices", nargs="+", help="Subset the matrix ran")
     args = parser.parse_args()
-    result = summarize(args.directory, args.repeat)
+    result = summarize(args.directory, args.repeat, args.devices)
     with args.output.open("x", encoding="utf-8") as file:
         json.dump(result, file, indent=2, allow_nan=False)
     print(
