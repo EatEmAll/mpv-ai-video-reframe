@@ -38,7 +38,10 @@ uv sync --locked
 uv run reframe doctor
 ```
 
-`doctor` explicitly prepares model weights and reports the selected device.
+`doctor` explicitly downloads the pinned YOLO26n asset, verifies its upstream
+SHA-256 before loading, and reports the selected device. Unknown weights are
+rejected; see [SECURITY.md](SECURITY.md) and the
+[review and release blockers](SECURITY_REVIEW.md).
 On Windows/NVIDIA, the accelerated setup used for the existing performance gates is:
 
 ```text
@@ -85,8 +88,10 @@ debug_osd=no
 ```
 
 `python_path` defaults to `.venv/Scripts/python.exe` on Windows or `.venv/bin/python`
-on Unix. `model` may name existing `.pt` weights or a CUDA `.engine`; relative model
-paths refer to the backend directory. `rate` is detection sampling (5â€“15), not the
+on Unix. `model` may name the pinned `.pt` weights or a locally built CUDA `.engine`
+with matching verified weights and device/runtime/hash metadata; relative model
+paths refer to the backend directory. Other model formats and unknown weights
+are refused. `rate` is detection sampling (5â€“15), not the
 camera framerate. Configuration changes take effect at the next enable, except
 the default key binding, which is established at script load. Existing user key
 bindings take precedence. Set `toggle_key=` and bind `script-binding reframe/toggle`
@@ -121,10 +126,15 @@ snapshot for an unexpected backend exit. A crashed backend is not automatically
 restarted; enable again to retry. A second companion targeting the same player is
 rejected, including another managed companion.
 
-A configured IPC endpoint is reused. Otherwise the script creates a Windows named
-pipe or Unix socket that remains available for that player session, including when
-following is disabled. IPC is local player control, not an authenticated network
-service. No footage is uploaded. Session status is available in `user-data/reframe`;
+A configured IPC endpoint is reused only after ownership, permissions and player
+identity checks. Otherwise the script creates a random Windows named pipe or a
+Unix socket in a private owned runtime directory. IPC remains available for that
+player session, including when following is disabled. Only the script-created
+endpoint is hardened; permissive existing endpoints are rejected. IPC is local
+player control; session IDs are freshness checks, not authentication. The extension
+has no footage-upload operation. See the
+[network and privacy audit](SECURITY_REVIEW.md#outbound-traffic-privacy-and-logs)
+for dependency limits. Session status is available in `user-data/reframe`;
 local lifecycle and camera logs are under `<backend_dir>/runs/lua/<session-id>/`.
 Logs are retained until you remove them. Startup stderr is bounded and reported
 in mpv's log on process completion. Use `reframe-status` to locate the session.
@@ -134,7 +144,10 @@ in mpv's log on process completion. Use `reframe-status` to locate the session.
 Disable following before upgrading the backend. Re-run environment setup and the
 installer, then restart mpv. Upgrades update unedited configuration to the selected backend directory, preserve
 edited configuration, and save the
-previous installed script as `reframe.lua.previous`. An edited/unowned script is
+first backed-up script as `reframe.lua.previous`; an existing backup is never
+overwritten. Interrupted installs are rolled back from a bounded journal on the
+next install/uninstall. Post-interruption edits are preserved and require manual
+reconciliation. An edited/unowned script is
 never overwritten automatically. Back up and remove it yourself before retrying.
 
 ```text
@@ -162,10 +175,12 @@ remains pending.
 
 ```text
 uv sync --locked --group dev
-uv run pytest -q
+uv run pytest -q --basetemp=runs/pytest-security-unique-id
 uv run ruff check src scripts tests
 uv run ruff format --check src scripts tests
 ```
+
+Choose a new test directory under the trusted checkout for each run (replace `unique-id`); tests intentionally reject broadly writable temporary ancestors.
 
 The Lua lifecycle test runs in mpv's actual interpreter using a mocked player
 API and requires no GPU. Focused Windows rendered checks in the development

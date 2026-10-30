@@ -1,0 +1,413 @@
+{
+  "lock_sha256_lf": "b70a8760906780f3604ceb28536b45bc7fb492569d758ed4060d8eb542b94638",
+  "queried_at": "2026-10-30T17:32:34.222239+00:00",
+  "source": "https://api.osv.dev/v1/querybatch",
+  "scope": "all locked registry packages; CUDA local version suffix normalized",
+  "packages": [
+    {
+      "name": "anyio",
+      "version": "4.15.1",
+      "advisories": []
+    },
+    {
+      "name": "av",
+      "version": "19.0.2",
+      "advisories": []
+    },
+    {
+      "name": "certifi",
+      "version": "2026.10.23",
+      "advisories": []
+    },
+    {
+      "name": "charset-normalizer",
+      "version": "3.5.2",
+      "advisories": []
+    },
+    {
+      "name": "colorama",
+      "version": "0.4.6",
+      "advisories": []
+    },
+    {
+      "name": "contourpy",
+      "version": "1.4.0",
+      "advisories": []
+    },
+    {
+      "name": "cuda-bindings",
+      "version": "13.4.4",
+      "advisories": []
+    },
+    {
+      "name": "cuda-pathfinder",
+      "version": "1.8.5",
+      "advisories": []
+    },
+    {
+      "name": "cuda-toolkit",
+      "version": "13.0.3.0",
+      "advisories": []
+    },
+    {
+      "name": "cycler",
+      "version": "0.12.1",
+      "advisories": []
+    },
+    {
+      "name": "filelock",
+      "version": "4.2.4",
+      "advisories": []
+    },
+    {
+      "name": "fonttools",
+      "version": "4.68.0",
+      "advisories": []
+    },
+    {
+      "name": "fsspec",
+      "version": "2026.9.0",
+      "advisories": []
+    },
+    {
+      "name": "h11",
+      "version": "0.16.0",
+      "advisories": []
+    },
+    {
+      "name": "hatchling",
+      "version": "1.33.0",
+      "advisories": []
+    },
+    {
+      "name": "httpcore",
+      "version": "1.0.9",
+      "advisories": []
+    },
+    {
+      "name": "httpx",
+      "version": "0.28.1",
+      "advisories": []
+    },
+    {
+      "name": "idna",
+      "version": "3.20",
+      "advisories": []
+    },
+    {
+      "name": "iniconfig",
+      "version": "2.3.1",
+      "advisories": []
+    },
+    {
+      "name": "jinja2",
+      "version": "3.1.6",
+      "advisories": []
+    },
+    {
+      "name": "kiwisolver",
+      "version": "1.5.1",
+      "advisories": []
+    },
+    {
+      "name": "lap",
+      "version": "0.5.13",
+      "advisories": []
+    },
+    {
+      "name": "markupsafe",
+      "version": "3.0.4",
+      "advisories": []
+    },
+    {
+      "name": "matplotlib",
+      "version": "3.11.2",
+      "advisories": []
+    },
+    {
+      "name": "ml-dtypes",
+      "version": "0.6.0",
+      "advisories": []
+    },
+    {
+      "name": "mpmath",
+      "version": "1.3.0",
+      "advisories": []
+    },
+    {
+      "name": "mpv",
+      "version": "1.0.8",
+      "advisories": []
+    },
+    {
+      "name": "networkx",
+      "version": "3.7",
+      "advisories": []
+    },
+    {
+      "name": "numpy",
+      "version": "2.5.4",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-cublas",
+      "version": "13.1.1.3",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-cuda-cupti",
+      "version": "13.0.85",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-cuda-nvrtc",
+      "version": "13.0.88",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-cuda-runtime",
+      "version": "13.0.96",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-cudnn-cu13",
+      "version": "9.24.0.43",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-cufft",
+      "version": "12.0.0.61",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-cufile",
+      "version": "1.15.1.6",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-curand",
+      "version": "10.4.0.35",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-cusolver",
+      "version": "12.0.4.66",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-cusparse",
+      "version": "12.6.3.3",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-cusparselt-cu13",
+      "version": "0.8.1",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-ml-py",
+      "version": "13.615.71",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-nccl-cu13",
+      "version": "2.30.7",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-nvjitlink",
+      "version": "13.4.92",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-nvshmem-cu13",
+      "version": "3.4.5",
+      "advisories": []
+    },
+    {
+      "name": "nvidia-nvtx",
+      "version": "13.0.85",
+      "advisories": []
+    },
+    {
+      "name": "onnx",
+      "version": "1.23.2",
+      "advisories": []
+    },
+    {
+      "name": "opencv-python",
+      "version": "5.0.0.93",
+      "advisories": []
+    },
+    {
+      "name": "packaging",
+      "version": "26.3",
+      "advisories": []
+    },
+    {
+      "name": "pathspec",
+      "version": "1.1.1",
+      "advisories": []
+    },
+    {
+      "name": "pillow",
+      "version": "13.0.0",
+      "advisories": []
+    },
+    {
+      "name": "pluggy",
+      "version": "1.7.0",
+      "advisories": []
+    },
+    {
+      "name": "polars",
+      "version": "2.1.0",
+      "advisories": []
+    },
+    {
+      "name": "polars-runtime-32",
+      "version": "2.1.0",
+      "advisories": []
+    },
+    {
+      "name": "protobuf",
+      "version": "7.36.2",
+      "advisories": []
+    },
+    {
+      "name": "psutil",
+      "version": "7.2.2",
+      "advisories": []
+    },
+    {
+      "name": "pygments",
+      "version": "2.21.0",
+      "advisories": []
+    },
+    {
+      "name": "pyparsing",
+      "version": "3.3.3",
+      "advisories": []
+    },
+    {
+      "name": "pytest",
+      "version": "9.2.0",
+      "advisories": []
+    },
+    {
+      "name": "pytest-timeout",
+      "version": "2.4.0",
+      "advisories": []
+    },
+    {
+      "name": "python-dateutil",
+      "version": "3.0.0",
+      "advisories": []
+    },
+    {
+      "name": "python-mpv-jsonipc",
+      "version": "1.5.0",
+      "advisories": []
+    },
+    {
+      "name": "pyyaml",
+      "version": "6.0.3",
+      "advisories": []
+    },
+    {
+      "name": "requests",
+      "version": "2.34.2",
+      "advisories": []
+    },
+    {
+      "name": "ruff",
+      "version": "0.17.3",
+      "advisories": []
+    },
+    {
+      "name": "setuptools",
+      "version": "84.2.1",
+      "advisories": []
+    },
+    {
+      "name": "six",
+      "version": "1.17.0",
+      "advisories": []
+    },
+    {
+      "name": "sympy",
+      "version": "1.14.0",
+      "advisories": []
+    },
+    {
+      "name": "tensorrt-cu13",
+      "version": "10.16.1.11",
+      "advisories": []
+    },
+    {
+      "name": "tensorrt-cu13-bindings",
+      "version": "10.16.1.11",
+      "advisories": []
+    },
+    {
+      "name": "tensorrt-cu13-libs",
+      "version": "10.16.1.11",
+      "advisories": []
+    },
+    {
+      "name": "tomlkit",
+      "version": "0.15.2",
+      "advisories": []
+    },
+    {
+      "name": "torch",
+      "version": "2.14.1",
+      "advisories": []
+    },
+    {
+      "name": "torchvision",
+      "version": "0.29.1",
+      "advisories": []
+    },
+    {
+      "name": "triton",
+      "version": "3.8.0",
+      "advisories": []
+    },
+    {
+      "name": "trove-classifiers",
+      "version": "2026.9.21.13",
+      "advisories": []
+    },
+    {
+      "name": "typing-extensions",
+      "version": "4.16.0",
+      "advisories": []
+    },
+    {
+      "name": "tzdata",
+      "version": "2026.6",
+      "advisories": []
+    },
+    {
+      "name": "ultralytics",
+      "version": "8.4.193",
+      "advisories": []
+    },
+    {
+      "name": "ultralytics-platform",
+      "version": "0.1.101",
+      "advisories": []
+    },
+    {
+      "name": "ultralytics-thop",
+      "version": "2.2.3",
+      "advisories": []
+    },
+    {
+      "name": "urllib3",
+      "version": "2.8.0",
+      "advisories": []
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling==1.33.0"]
 build-backend = "hatchling.build"
 
 [project]
@@ -32,6 +32,7 @@ dev = [
     "ruff>=0.14",
     "psutil>=7",
     "nvidia-ml-py>=13.615",
+    "hatchling==1.33.0",
 ]
 spike = ["mpv>=1.0.8"]
 accel = ["tensorrt-cu13==10.16.1.11; sys_platform == 'win32'", "onnx==1.23.2"]
