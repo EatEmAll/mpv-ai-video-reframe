@@ -1,0 +1,1 @@
+"""mpv AI reframing sidecar."""

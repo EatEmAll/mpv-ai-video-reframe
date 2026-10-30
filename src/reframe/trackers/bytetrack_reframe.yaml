@@ -1,0 +1,9 @@
+# Copied from the pinned Ultralytics ByteTrack defaults (AGPL-3.0).
+# Buffer units are sampled frames: 30 frames is about 3 seconds at 10 Hz.
+tracker_type: bytetrack
+track_high_thresh: 0.25
+track_low_thresh: 0.1
+new_track_thresh: 0.25
+track_buffer: 30
+match_thresh: 0.8
+fuse_score: true
