@@ -40,6 +40,9 @@ installer targets. Unix virtual-environment interpreter links are permitted only
 from a trusted parent to a trusted resolved executable. System-owned Unix alias
 paths may require selecting a canonical path. Do not weaken permissions to bypass
 a failure. Edited configuration can select executable code and must be reviewed.
+Windows Unicode backend paths have unresolved Python editable-install/native CUDA
+loader failures in the [baseline assessment](SECURITY_REVIEW.md#validation-and-remaining-acceptance-gates).
+Ownership checks and `-I` do not resolve those compatibility failures.
 The interpreter must already be trusted before it can run the checker; this is
 defense in depth, not protection against a compromised installation or same-user
 malware. Administrators/root/SYSTEM and processes under your account are trusted.

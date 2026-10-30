@@ -233,9 +233,32 @@ private-reporting verification. The private-repository collaborator route is
 documented in [SECURITY.md](SECURITY.md); GET/PUT private-vulnerability-reporting
 returned HTTP 404, so no external route is claimed configured.
 
-Coordinate against issue #1's immutable `cf9d0e8` Windows baseline: after its GPU
-benchmark finishes, use an isolated config with the new Lua/backend together,
+Issue #1's immutable `cf9d0e8` Windows verification has now completed; its GPU
+priority is released. Its [sanitized results](https://github.com/EatEmAll/mpv-ai-video-reframe/issues/1#issuecomment-6529189109)
+are baseline evidence only, not verification of these security changes. The local
+`RESULTS.md` and `COMMANDS.md` were read to reconcile the following limits:
+
+- The default editable install under a Unicode backend path failed CP1252 `.pth`
+  processing during Python `site` initialization. `-I` still imports `site` and
+  processes installed `.pth` files; our preflight cannot validate anything if the
+  interpreter fails before executing it. Ownership checks establish trust, not
+  Unicode/bootstrap compatibility. No Unicode backend success is claimed here.
+- A non-editable Unicode environment passed setup, but CUDA initialization
+  aborted with `0xC0000409` / `Cannot load symbol cudnnGetVersion`; CPU initialized
+  successfully. `--no-editable` is not an established CUDA workaround. These
+  remain issue #1 environment/native-loader failures, not fixes delivered by #2.
+- Baseline 1080p CUDA and measured CPU quality passed; CPU controls were unmeasured.
+  The 4K60/1x `.pt` CUDA run failed the frame-health gate (0.667% additional drops
+  against a 0.5% budget). TensorRT was not measured. None of those quality or
+  performance outcomes was repeated on the patched backend.
+- The baseline's `.pt` SHA-256 matches this review's upstream pin. That supports
+  artifact alignment only; the new restricted-loader path still needs an
+  inference/export integration check. The published source omits the performance
+  harness, so reproducible distribution of that harness is separate parent work.
+
+For post-#2 integration, use an isolated config with the new Lua/backend together,
 verify pinned weights and restricted loader, rebuild/trust the engine if needed,
 repeat enable/disable, empty-player, seek, playlist, startup failure and crash
 restoration, then compare 1x/4x FPS, full-height fill and camera quality. No heavy
-GPU/render run was attempted by this implementation task.
+GPU/render run was attempted by this implementation task. Released GPU priority
+does not substitute for these integration checks; no new benchmark was launched.
