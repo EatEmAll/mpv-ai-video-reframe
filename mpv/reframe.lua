@@ -55,10 +55,36 @@ local function valid_saved(t)
 end
 mp.register_script_message('reframe-backend', function(raw)
     local s = current
-    if not s or #raw > 16384 then return end
+    if not s or type(raw) ~= 'string' or #raw > 16384 then return end
     local d = utils.parse_json(raw)
     if type(d) ~= 'table' or d.protocol ~= 1 or d.session ~= s.id or
-       type(d.seq) ~= 'number' or d.seq % 1 ~= 0 or d.seq <= s.received then return end
+       type(d.seq) ~= 'number' or d.seq % 1 ~= 0 or d.seq > 9007199254740991 or d.seq <= s.received then return end
+    local schemas = {hello={backend_version=true,pid=true},
+        heartbeat={phase=true,controller_progress=true,stalled=true},
+        state={state=true,reason=true,model=true,log_dir=true},
+        acquire={view_epoch=true,saved=true}, released={view_epoch=true},
+        error={code=true,message=true}}
+    local schema = schemas[d.type]
+    if not schema then return end
+    local common = {protocol=true,session=true,seq=true,type=true}
+    for key in pairs(d) do if not common[key] and not schema[key] then return end end
+    local function text(value) return type(value) == 'string' and #value <= 1024 end
+    if d.type == 'hello' and (not text(d.backend_version) or type(d.pid) ~= 'number' or
+       d.pid < 1 or d.pid % 1 ~= 0 or d.pid > 9007199254740991) then return end
+    if d.type == 'state' then
+        local states = {starting=true, waiting=true, loading=true, ready=true, active=true, suspended=true}
+        if not states[d.state] or (d.reason ~= nil and (type(d.reason) ~= 'string' or #d.reason > 1024)) then return end
+        if (d.model ~= nil and not text(d.model)) or (d.log_dir ~= nil and not text(d.log_dir)) then return end
+    end
+    if d.type == 'error' and (not text(d.message) or (d.code ~= nil and not text(d.code))) then return end
+    if d.type == 'heartbeat' and (type(d.stalled) ~= 'boolean' or not text(d.phase) or
+       type(d.controller_progress) ~= 'number' or d.controller_progress ~= d.controller_progress or
+       math.abs(d.controller_progress) == math.huge) then return end
+    if (d.type == 'acquire' or d.type == 'released') and
+       (type(d.view_epoch) ~= 'number' or d.view_epoch % 1 ~= 0 or
+        d.view_epoch < 1 or d.view_epoch > 9007199254740991) then return end
+    if d.type == 'acquire' and (d.view_epoch <= s.epoch or not valid_saved(d.saved)) then return end
+    if d.type == 'released' and d.view_epoch ~= s.epoch then return end
     s.received, s.last = d.seq, mp.get_time()
     if d.type == 'hello' then
         s.hello = true
@@ -98,16 +124,30 @@ start = function()
     end
     if o.rate < 5 or o.rate > 15 or o.rate % 1 ~= 0 then show('rate must be an integer from 5 to 15'); return end
     if not utils.file_info(executable()) then show('Python environment missing; prepare the backend first'); return end
+    local function security(command, pipe, harden)
+        local args = {executable(), '-I', '-m', 'reframe.security', command,
+            '--player-pid', tostring(utils.getpid()), '--backend', o.backend_dir,
+            '--python', executable()}
+        if pipe then args[#args+1]='--endpoint'; args[#args+1]=pipe end
+        if harden then args[#args+1]='--harden' end
+        local result = mp.command_native({name='subprocess', args=args, playback_only=false,
+            capture_stdout=true, capture_stderr=true, capture_size=4096})
+        if not result or result.status ~= 0 then return nil end
+        local data = utils.parse_json(result.stdout)
+        return type(data) == 'table' and data.endpoint or nil
+    end
     local pipe = mp.get_property('input-ipc-server', '')
     if pipe == '' then
-        if not endpoint then
-            local suffix = tostring(utils.getpid())..'-'..tostring(os.time())
-            endpoint = windows and ('mpv-reframe-'..suffix) or
-                utils.join_path('/tmp', 'rf-'..suffix..'.sock')
-        end
-        local ok, err = mp.set_property('input-ipc-server', endpoint)
-        if not ok then show('Cannot enable IPC: '..tostring(err)); return end
+        endpoint = security('prepare')
+        if not endpoint then show('IPC preparation failed; check trusted paths and permissions'); return end
+        local ok = mp.set_property('input-ipc-server', endpoint)
+        if not ok then show('Cannot enable private IPC'); return end
         pipe = endpoint
+    end
+    if not security('verify', pipe, pipe == endpoint) then
+        if pipe == endpoint then mp.set_property('input-ipc-server', '') end
+        show('IPC ownership or permissions rejected; see SECURITY.md')
+        return
     end
     counter = counter + 1
     local id = tostring(utils.getpid())..'-'..tostring(os.time())..'-'..counter
@@ -115,8 +155,8 @@ start = function()
     s.output = utils.join_path(o.backend_dir, 'runs/lua/'..id)
     current, enabled = s, true
     publish(s, 'starting')
-    local args = {executable(), '-m', 'reframe', 'attach', '--managed', '--pipe', pipe,
-        '--session-id', id, '--lua-client', mp.get_script_name(), '--backend-dir', o.backend_dir,
+    local args = {executable(), '-I', '-m', 'reframe', 'attach', '--managed', '--pipe', pipe,
+        '--player-pid', tostring(utils.getpid()), '--session-id', id, '--lua-client', mp.get_script_name(), '--backend-dir', o.backend_dir,
         '--output-dir', s.output, '--rate', tostring(o.rate)}
     if o.model ~= '' then args[#args+1]='--model'; args[#args+1]=o.model end
     if o.debug_osd then args[#args+1]='--debug-osd' end
@@ -169,6 +209,6 @@ mp.register_script_message('reframe-status', function()
 end)
 mp.register_event('shutdown', function()
     if current then control(current, 'stop', {reason='shutdown'}) end
-    if not windows and endpoint then os.remove(endpoint) end
+    -- mpv owns endpoint lifetime. Never unlink an endpoint by pathname here.
 end)
 if o.autostart then mp.add_timeout(0, start) end

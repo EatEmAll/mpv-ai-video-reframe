@@ -4,12 +4,15 @@ import argparse
 import json
 import subprocess
 import sys
-from pathlib import Path
 
 from .runtime import find_mpv
 
 
 def doctor(mpv_path=None):
+    from .models import configure_inference, prepare_weights
+
+    configure_inference()
+    weights = prepare_weights()
     import av
     import python_mpv_jsonipc  # noqa: F401
     import torch
@@ -19,8 +22,7 @@ def doctor(mpv_path=None):
     version = subprocess.run(
         [mpv, "--version"], capture_output=True, text=True, encoding="utf-8", check=True
     ).stdout.splitlines()[0]
-    Path("models").mkdir(exist_ok=True)
-    model = YOLO("models/yolo26n.pt")
+    model = YOLO(str(weights))
     report = {
         "mpv": version,
         "mpv_path": mpv,
@@ -53,6 +55,7 @@ def main():
         "attach", help="Managed companion launched by the Lua extension"
     )
     cmd.add_argument("--pipe", required=True)
+    cmd.add_argument("--player-pid", type=int, required=True)
     cmd.add_argument("--managed", action="store_true")
     for option in ("session-id", "lua-client", "backend-dir", "output-dir"):
         cmd.add_argument("--" + option)

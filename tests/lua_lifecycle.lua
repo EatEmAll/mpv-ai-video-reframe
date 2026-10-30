@@ -16,9 +16,13 @@ fake.register_event=function() end
 fake.add_key_binding=function() end
 fake.add_timeout=function(_,fn) fn() end
 fake.add_periodic_timer=function(_,fn) timers[#timers+1]=fn end
+fake.command_native=function(request)
+    for _,v in ipairs(request.args) do assert(v ~= '--harden') end
+    return {status=0,stdout=utils.format_json({endpoint='existing-pipe'})}
+end
 fake.command_native_async=function(args,fn)
     assert(args.playback_only == false and args.detach == false)
-    assert(args.args[2] == '-m')
+    assert(args.args[2] == '-I' and args.args[3] == '-m')
     starts=starts+1; callbacks[starts]=fn; return starts
 end
 fake.abort_async_command=function(id) callbacks[id](false, {status=-1}, 'killed') end
@@ -30,6 +34,7 @@ local ok,err=pcall(function()
     dofile(os.getenv('REFRAME_TEST_ROOT')..'/mpv/reframe.lua')
     local function event(s, seq, kind, fields)
         local d=fields or {};d.protocol=1;d.session=s;d.seq=seq;d.type=kind
+        if kind == 'hello' then d.backend_version='0.1.0';d.pid=123 end
         handlers['reframe-backend'](utils.format_json(d))
     end
     for i=1,20 do
@@ -47,6 +52,11 @@ local ok,err=pcall(function()
     handlers['reframe-enable']()
     local id=values['user-data/reframe'].session
     event('old-session',1,'error',{message='stale'})
+    assert(values['user-data/reframe'].state=='starting')
+    event(id,9007199254740992,'error',{message='overflow'})
+    event(id,999,'unknown')
+    event(id,999,'state',{state={}})
+    event(id,999,'released',{view_epoch=.5})
     assert(values['user-data/reframe'].state=='starting')
     event(id,1,'hello')
     event(id,2,'acquire',{view_epoch=1,saved={panscan=.4,['video-align-x']=.1,cache='auto',['video-timing-offset']=0,['keepaspect-window']=true}})

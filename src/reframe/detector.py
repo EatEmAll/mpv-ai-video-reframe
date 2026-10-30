@@ -7,7 +7,9 @@ from types import SimpleNamespace
 
 class Detector:
     def __init__(self, model_path=None):
-        os.environ["YOLO_AUTOINSTALL"] = "false"
+        from .models import configure_inference
+
+        configure_inference()
         os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
         import numpy as np
         import torch

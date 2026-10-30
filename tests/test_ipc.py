@@ -15,6 +15,7 @@ class FakeMPV:
 def test_only_one_inflight_and_retry_latest():
     ipc = IPC.__new__(IPC)
     ipc.lock = Lock()
+    ipc.generation = 0
     ipc.inflight = False
     ipc.last_align = None
     ipc.error = None
@@ -41,6 +42,7 @@ def test_forced_refresh_still_obeys_the_playback_frame_ceiling(monkeypatch):
     monkeypatch.setattr(module.time, "perf_counter", lambda: wall[0])
     ipc = IPC.__new__(IPC)
     ipc.lock = Lock()
+    ipc.generation = 0
     ipc.inflight = False
     ipc.last_align = None
     ipc.error = None
@@ -56,3 +58,23 @@ def test_forced_refresh_still_obeys_the_playback_frame_ceiling(monkeypatch):
     wall[0] = 10.2
     assert ipc.set_align(0.2, force=True, min_interval=0.1)
     assert ipc.sent_count == 2
+
+
+def test_old_generation_completion_does_not_set_new_alignment():
+    ipc = IPC.__new__(IPC)
+    ipc.lock = Lock()
+    ipc.generation = 0
+    ipc.inflight = False
+    ipc.last_align = None
+    ipc.error = None
+    ipc.roundtrips = deque(maxlen=120)
+    ipc.latency_seconds = 0
+    ipc.sent_count = 0
+    ipc.last_sent = 0
+    ipc.mpv = FakeMPV()
+    assert ipc.set_align(0.2)
+    ipc.generation += 1
+    ipc.mpv.pending[-1][1](None, None)
+    assert not ipc.inflight
+    assert ipc.last_align is None
+    assert not ipc.roundtrips

@@ -111,6 +111,7 @@ def test_lua_lifecycle_with_real_mpv_interpreter(tmp_path):
         [
             executable,
             "--no-config",
+            *(["--media-controls=no"] if os.name == "nt" else []),
             "--log-file=" + str(tmp_path / "mpv.log"),
             "--vo=null",
             "--ao=null",

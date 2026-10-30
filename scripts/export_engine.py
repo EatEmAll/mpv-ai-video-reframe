@@ -21,9 +21,11 @@ def main():
     args = parser.parse_args()
     if not args.model.is_file():
         parser.error("Model weights must already exist; run reframe doctor first")
-    from ultralytics import YOLO
+    from reframe.models import configure_inference, record_engine, verify_weights
 
-    from reframe.models import record_engine
+    configure_inference()
+    verify_weights(args.model)
+    from ultralytics import YOLO
 
     engine = (
         args.model.with_suffix(".engine")

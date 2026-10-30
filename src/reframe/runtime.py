@@ -10,13 +10,17 @@ def find_mpv(override: str | None = None) -> str:
     if candidate:
         resolved = shutil.which(candidate) or candidate
         if Path(resolved).is_file():
-            return str(Path(resolved).resolve())
+            from .security import trusted_path
+
+            return str(trusted_path(resolved))
         raise FileNotFoundError(f"mpv executable not found: {candidate}")
     installed = (
         Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "MPV Player/mpv.exe"
     )
     if installed.is_file():
-        return str(installed)
+        from .security import trusted_path
+
+        return str(trusted_path(installed))
     raise FileNotFoundError("Install mpv or set REFRAME_MPV / --mpv-path")
 
 

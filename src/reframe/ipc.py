@@ -4,9 +4,7 @@ import time
 from collections import deque
 from threading import Event, Lock
 
-from python_mpv_jsonipc import MPV
-
-from .runtime import normalize_endpoint
+from .transport import connect_mpv
 
 PROPERTIES = (
     "current-tracks/video",
@@ -50,9 +48,11 @@ class IPC:
         self.enabled = False
         self.sent_count = 0
         self.last_sent = 0.0
-        # Library takes a pipe name and prefixes it internally on Windows.
-        pipe = normalize_endpoint(pipe)
-        self.mpv = MPV(start_mpv=False, ipc_socket=pipe, quit_callback=self.closed.set)
+        self.mpv = connect_mpv(
+            pipe,
+            player_pid=getattr(managed, "player_pid", None),
+            quit_callback=self.closed.set,
+        )
         self.owner = None
         if managed is None:
             from .managed import Ownership
@@ -166,10 +166,13 @@ class IPC:
             if time.perf_counter() - self.last_sent < min_interval:
                 return False
             self.inflight = True
+            generation = self.generation
 
         def done(error, result):
             with self.lock:
                 self.inflight = False
+                if generation != self.generation:
+                    return
                 if error is None:
                     self.last_align = value
                     self.roundtrips.append(time.perf_counter() - sent_at)
