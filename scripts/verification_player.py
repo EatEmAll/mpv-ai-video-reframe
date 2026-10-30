@@ -10,6 +10,7 @@ from pathlib import Path
 from python_mpv_jsonipc import MPV
 
 from reframe.runtime import find_mpv
+from reframe.security import prepare_endpoint
 
 
 def save(name, result):
@@ -43,8 +44,15 @@ def wait_property(player, name, timeout=10):
 
 @contextmanager
 def player_for(path, **options):
-    name = f"reframe-spike-{uuid.uuid4().hex}"
+    # Lua refuses relative or shared endpoints; Unix needs a private socket path.
+    name = (
+        f"reframe-spike-{uuid.uuid4().hex}"
+        if os.name == "nt"
+        else prepare_endpoint(os.getpid())
+    )
     options.setdefault("cache", True)
+    if os.environ.get("REFRAME_GPU_CONTEXT"):
+        options.setdefault("gpu_context", os.environ["REFRAME_GPU_CONTEXT"])
     player = MPV(
         mpv_location=find_mpv(),
         ipc_socket=name,
@@ -67,3 +75,8 @@ def player_for(path, **options):
         yield player, name
     finally:
         player.terminate()
+        if os.name != "nt":
+            try:
+                Path(name).parent.rmdir()  # our new per-player directory only
+            except OSError:
+                pass

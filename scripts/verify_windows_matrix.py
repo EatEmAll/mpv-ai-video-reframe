@@ -11,6 +11,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+PROFILES = (
+    ("cuda-pt", "models/yolo26n.pt", "1080p30", [1, 4]),
+    ("cuda-pt", "models/yolo26n.pt", "2160p60", [1, 2]),
+    ("cuda-engine", "models/yolo26n.engine", "1080p30", [1, 4]),
+    ("cuda-engine", "models/yolo26n.engine", "2160p60", [1, 2]),
+    ("cpu-pt", "models/yolo26n.pt", "1080p30", [1]),
+)
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -22,19 +30,22 @@ def main():
         type=float,
         help="Experiment only: override active render offset",
     )
+    parser.add_argument(
+        "--devices",
+        nargs="+",
+        choices=("cuda-pt", "cuda-engine", "cpu-pt"),
+        default=["cuda-pt", "cuda-engine", "cpu-pt"],
+        help="Subset to run; summaries must name the same subset",
+    )
     args = parser.parse_args()
     if args.repeat < 2:
         parser.error("At least two repetitions required")
     args.output.mkdir(parents=True, exist_ok=False)
     script = Path(__file__).with_name("verify_playback.py")
     records = []
-    for device, model, variant, speeds in (
-        ("cuda-pt", "models/yolo26n.pt", "1080p30", [1, 4]),
-        ("cuda-pt", "models/yolo26n.pt", "2160p60", [1, 2]),
-        ("cuda-engine", "models/yolo26n.engine", "1080p30", [1, 4]),
-        ("cuda-engine", "models/yolo26n.engine", "2160p60", [1, 2]),
-        ("cpu-pt", "models/yolo26n.pt", "1080p30", [1]),
-    ):
+    for device, model, variant, speeds in PROFILES:
+        if device not in args.devices:
+            continue
         for repeat in range(args.repeat):
             output = args.output / f"{device}-{variant}-{repeat + 1}"
             command = [

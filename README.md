@@ -3,8 +3,9 @@
 The extension runs inside ordinary mpv and supervises a local Python companion.
 `Ctrl+r` toggles following; no custom player executable is required. The script,
 IPC transport, installer and backend control code support Windows, Linux and
-macOS. Inference selects CUDA, Apple MPS or CPU. Windows/NVIDIA is the platform
-validated locally, including limited CPU fallback measurements. Native Linux/macOS
+macOS. Inference selects CUDA, Apple MPS or CPU. Windows/NVIDIA is validated
+locally, including limited CPU fallback measurements. Linux is validated on CPU at
+1080p/1x only; see [Linux setup and results](LINUX_VERIFICATION.md). Native macOS
 playback and MPS performance are not yet verified.
 
 ## Design influences and acknowledgements
@@ -200,6 +201,7 @@ remains pending.
 
 ```text
 uv sync --locked --group dev
+mkdir runs
 uv run pytest -q --basetemp=runs/pytest-security-unique-id
 uv run ruff check src scripts tests
 uv run ruff format --check src scripts tests
@@ -210,8 +212,9 @@ Choose a new test directory under the trusted checkout for each run (replace `un
 The Lua lifecycle test runs in mpv's actual interpreter using a mocked player
 API and requires no GPU. Native Windows checks cover stable mpv lifecycle,
 control/restore behavior, full-height fill, restricted-loader CUDA/CPU inference,
-locally built TensorRT 11.2 inference/export, and the status badge. Native WSL
-permission/peer tests are security evidence, not Linux GUI playback verification.
+locally built TensorRT 11.2 inference/export, and the status badge. Native Linux
+checks cover the same lifecycle and CPU playback on a headless Wayland compositor.
+Linux CUDA, hardware decoding, physical displays and 4x CPU playback are not verified.
 
 See [measured Windows results](WINDOWS_VERIFICATION_RESULTS.md) and
 [reproduction instructions](WINDOWS_VERIFICATION.md) for exact hardware, source
@@ -219,7 +222,7 @@ manifests and retained failures. The integrated TensorRT 4K/1x and CPU 1080p/1x
 runs pass all gates. **4K/2x and fast PyTorch profiles are not verified:** the final
 integrated engine 4K/2x run exceeds the unchanged frame-health budget. Repeated
 successful controlled experiments do not erase that failed integration run.
-Native Linux/macOS playback, MPS, the remaining full matrix and manual perceptual
+Native macOS playback, MPS, the remaining full matrix and manual perceptual
 smoothness review remain pending. This is a preview, not universal real-time
 performance or platform parity. No private footage or raw benchmark artifacts
 are included in the source distribution.
