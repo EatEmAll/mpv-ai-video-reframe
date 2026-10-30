@@ -6,6 +6,28 @@ IPC transport, installer and backend control code support Windows, Linux and
 macOS. Inference selects CUDA, Apple MPS or CPU. Windows/NVIDIA is the platform
 validated locally; Linux/macOS and MPS/CPU performance are not yet verified.
 
+## Design influences and acknowledgements
+
+The camera-planning design was informed by
+[Ido Pinto's ai-video-reframing](https://github.com/idopinto/ai-video-reframing),
+particularly its single-subject hold/follow policy, easing back to centre after
+the subject leaves, and Gaussian camera-path smoothing around one-third of a
+second. Thank you to Ido Pinto for this prior work.
+
+Additional reference projects studied during development:
+
+- [amys94fr/FaceFollow](https://github.com/amys94fr/FaceFollow): a baseline for
+  causal exponential smoothing and portrait-crop geometry.
+- [Ashyni/mpv-scripts](https://github.com/Ashyni/mpv-scripts): `dynamic-crop.lua`
+  as a reference for runtime crop updates and mpv Lua script structure.
+
+These credits describe design influences and reference material, rather than
+runtime package dependencies or wholesale imports of those projects. The current
+implementation adapts the approach to live mpv playback, bounded look-ahead and
+its own camera/controller lifecycle. See the
+[reference provenance](THIRD_PARTY_NOTICES.md#reference-project-provenance) for the
+revisions studied.
+
 ## Prepare the backend
 
 Install mpv 0.41 or newer, Python 3.12, and uv. Extract the source release or clone
