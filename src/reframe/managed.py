@@ -214,6 +214,9 @@ class Session:
 
 
 def run_managed(args):
+    from .runtime import validate_backend_runtime
+
+    validate_backend_runtime(args.backend_dir)
     os.chdir(trusted_path(args.backend_dir))
     session = Session(args)
     ipc = None

@@ -1,6 +1,8 @@
 from collections import deque
 from threading import Lock
 
+import pytest
+
 from reframe.ipc import IPC
 
 
@@ -78,3 +80,55 @@ def test_old_generation_completion_does_not_set_new_alignment():
     assert not ipc.inflight
     assert ipc.last_align is None
     assert not ipc.roundtrips
+
+
+@pytest.mark.parametrize("timing", [0, 0.05, 0.083])
+@pytest.mark.parametrize("managed", [False, True])
+def test_active_crop_preserves_configured_timing_and_restores_snapshot(timing, managed):
+    from threading import Event
+    from types import SimpleNamespace
+
+    properties = {
+        "panscan": 0.2,
+        "video-align-x": 0.1,
+        "cache": "auto",
+        "video-timing-offset": timing,
+        "keepaspect-window": True,
+    }
+    calls = []
+
+    def command(*args):
+        calls.append(args)
+        if args[0] == "get_property":
+            return properties[args[1]]
+        if args[0] == "set_property":
+            properties[args[1]] = args[2]
+
+    ipc = IPC.__new__(IPC)
+    ipc.lock, ipc.cache, ipc.generation = Lock(), {"path": "local.mp4"}, 1
+    ipc.closed, ipc.inflight, ipc.enabled = Event(), False, False
+    ipc.saved = {
+        name: properties[name]
+        for name in ("panscan", "video-align-x", "cache", "video-timing-offset")
+    }
+    acquired = []
+    ipc.managed = (
+        SimpleNamespace(
+            acquire=lambda saved: acquired.append(saved.copy()),
+            send=lambda *a, **kw: None,
+            epoch=1,
+        )
+        if managed
+        else None
+    )
+    ipc.mpv = SimpleNamespace(command=command)
+    ipc.enable()
+    assert properties["video-timing-offset"] == timing
+    assert not any(c[:2] == ("set_property", "video-timing-offset") for c in calls)
+    assert properties["panscan"] == 1
+    if managed:
+        assert acquired[0]["video-timing-offset"] == timing
+    properties["video-timing-offset"] = 0.123
+    ipc.restore()
+    assert properties["video-timing-offset"] == timing
+    assert properties["panscan"] == 0.2

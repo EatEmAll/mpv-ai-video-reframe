@@ -35,7 +35,7 @@ dev = [
     "hatchling==1.33.0",
 ]
 spike = ["mpv>=1.0.8"]
-accel = ["tensorrt-cu13==10.16.1.11; sys_platform == 'win32'", "onnx==1.23.2"]
+accel = ["tensorrt-cu13==11.2.1.2; sys_platform == 'win32'", "onnx==1.23.2"]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu130", marker = "sys_platform != 'darwin'" }]

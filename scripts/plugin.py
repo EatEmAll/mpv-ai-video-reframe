@@ -14,6 +14,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 # Also usable as a direct setup script before the project is installed.
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "scripts"))
+from windows_preflight import probe, supported_backend  # noqa: E402
+
 from reframe.security import (  # noqa: E402
     SecurityError,
     strict_json,
@@ -184,6 +187,7 @@ def config_dir():
 
 
 def install(root, config):
+    supported_backend(root)
     root, config = safe(root), safe(config)
     with installer_lock(config):
         recover(config)
@@ -278,15 +282,27 @@ def package(output):
             "README.md",
             "SECURITY.md",
             "SECURITY_REVIEW.md",
+            "SECURITY_ADVISORIES.md",
             "security-dependencies.json",
+            "security-upstream-sources.json",
+            "MPV_PROVENANCE.md",
+            "mpv-provenance.json",
             "scripts/security_audit.py",
             "LICENSE",
             "NOTICE",
             "THIRD_PARTY_NOTICES.md",
             "scripts/plugin.py",
             "scripts/export_engine.py",
+            "WINDOWS_VERIFICATION.md",
+            "WINDOWS_VERIFICATION_RESULTS.md",
+            "WINDOWS_VERIFICATION_RESULTS.json",
         )
     ]
+    paths.extend(
+        p
+        for p in (ROOT / "scripts").iterdir()
+        if p.suffix in {".py", ".ps1"} and p not in paths
+    )
     for name in ("src/reframe", "mpv", "tests"):
         paths.extend(
             p
@@ -319,6 +335,11 @@ def main():
         result = package(args.output)
     else:
         config = args.config_dir or config_dir()
+        if args.command == "install":
+            try:
+                probe(args.backend_dir)
+            except (ValueError, RuntimeError, OSError) as error:
+                p.error(str(error))
         result = (
             install(args.backend_dir, config)
             if args.command == "install"

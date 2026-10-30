@@ -126,6 +126,10 @@ def prepare_endpoint(pid):
     if type(pid) is not int or pid <= 0:
         raise SecurityError("Invalid player PID")
     # mkdtemp is exclusive; the checked root prevents cross-user substitution.
+    if os.name == "nt":
+        from .windows_security import require_secure_player
+
+        require_secure_player(pid)
     root = runtime_root()
     if os.name == "nt":
         return "mpv-reframe-" + str(pid) + "-" + os.urandom(16).hex()
@@ -146,7 +150,7 @@ def validate_endpoint(endpoint, *, player_pid=None, harden=False):
         name = endpoint.removeprefix("\\\\.\\pipe\\")
         if not re.fullmatch(r"[A-Za-z0-9_.-]{1,180}", name):
             raise SecurityError("Only local named pipes are supported")
-        check_pipe(name, player_pid=player_pid, harden=harden)
+        check_pipe(name, player_pid=player_pid, harden=False)
         return name
     path = Path(endpoint)
     if not path.is_absolute() or len(os.fsencode(endpoint)) > 100:
@@ -177,6 +181,10 @@ def main():
     trusted_executable(args.python)
     if not Path(args.backend).is_absolute() or not Path(args.python).is_absolute():
         raise SecurityError("Backend and interpreter must be absolute trusted paths")
+    if os.name == "nt" and args.command == "verify":
+        from .windows_security import require_secure_player
+
+        require_secure_player(args.player_pid)
     value = (
         prepare_endpoint(args.player_pid)
         if args.command == "prepare"

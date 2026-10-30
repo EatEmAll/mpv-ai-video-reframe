@@ -3,7 +3,21 @@ local real = require 'mp'
 local utils = require 'mp.utils'
 local handlers, callbacks, timers = {}, {}, {}
 local values, crops, now, starts = {}, {}, 0, 0
+local overlays, observers = {}, {}
 local fake = {msg={error=function() end}}
+fake.get_property_native=function(k)
+    if k == 'osd-dimensions' then return {w=1280,h=720} end
+    return values[k]
+end
+fake.create_osd_overlay=function(kind)
+    assert(kind == 'ass-events')
+    local overlay = {updates=0, removed=false}
+    function overlay:update() self.updates=self.updates+1; self.removed=false end
+    function overlay:remove() self.removed=true end
+    overlays[#overlays+1]=overlay
+    return overlay
+end
+fake.observe_property=function(k,_,fn) observers[k]=fn end
 fake.get_time=function() return now end
 fake.osd_message=function() end
 fake.get_script_name=function() return 'reframe' end
@@ -32,6 +46,10 @@ local original_info=utils.file_info
 utils.file_info=function() return {is_file=true} end
 local ok,err=pcall(function()
     dofile(os.getenv('REFRAME_TEST_ROOT')..'/mpv/reframe.lua')
+    assert(overlays[1].data:find('Reframe: OFF',1,true))
+    local initial_updates=overlays[1].updates
+    observers['osd-dimensions']()
+    assert(overlays[1].updates == initial_updates+1)
     local function event(s, seq, kind, fields)
         local d=fields or {};d.protocol=1;d.session=s;d.seq=seq;d.type=kind
         if kind == 'hello' then d.backend_version='0.1.0';d.pid=123 end
@@ -40,11 +58,21 @@ local ok,err=pcall(function()
     for i=1,20 do
         handlers['reframe-enable']();handlers['reframe-enable']()
         assert(starts==i)
+        assert(overlays[1].data:find('Reframe: STARTING',1,true))
         local id=values['user-data/reframe'].session
         event(id,1,'hello')
         event(id,2,'acquire',{view_epoch=1,saved={panscan=.2,['video-align-x']=.3,cache=(i % 2 == 0 and true or 'auto'),['video-timing-offset']=0,['keepaspect-window']=true}})
         assert(crops[#crops].type=='acquire-ack')
+        event(id,3,'state',{state='loading'})
+        assert(overlays[1].data:find('STARTING (loading)',1,true))
+        event(id,4,'state',{state='waiting'})
+        assert(overlays[1].data:find('SUSPENDED (waiting)',1,true))
+        event(id,5,'state',{state='active'})
+        assert(overlays[1].data:find('Reframe: ON',1,true))
+        event(id,6,'state',{state='suspended'})
+        assert(overlays[1].data:find('Reframe: SUSPENDED',1,true))
         handlers['reframe-stop']()
+        assert(overlays[1].data:find('OFF (stopping)',1,true))
         callbacks[i](true,{status=0})
         assert(values.panscan==.2 and values['video-align-x']==.3)
         assert(values['user-data/reframe'].state=='disabled')
@@ -64,10 +92,17 @@ local ok,err=pcall(function()
     callbacks[starts](false,{status=1},'crash')
     assert(values.panscan==.4)
     assert(values['user-data/reframe'].state=='error')
+    assert(overlays[1].data:find('Reframe: ERROR',1,true))
     -- Stop a hung startup, then verify cancellation after the grace period.
     handlers['reframe-enable']();handlers['reframe-stop']()
     now=6;timers[1]()
     assert(values['user-data/reframe'].state=='disabled')
+    -- The configuration opt-out removes this script's own overlay only.
+    package.loaded['mp.options']={read_options=function(o)
+        o.status_indicator=false
+    end}
+    dofile(os.getenv('REFRAME_TEST_ROOT')..'/mpv/reframe.lua')
+    assert(overlays[2].removed and overlays[2].updates == 0)
 end)
 utils.file_info=original_info
 if ok then print('LUA_LIFECYCLE_PASS') else print(tostring(err)) end

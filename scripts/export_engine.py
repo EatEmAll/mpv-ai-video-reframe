@@ -21,16 +21,28 @@ def main():
     args = parser.parse_args()
     if not args.model.is_file():
         parser.error("Model weights must already exist; run reframe doctor first")
-    from reframe.models import configure_inference, record_engine, verify_weights
+    from reframe.models import (
+        configure_inference,
+        load_yolo,
+        record_engine,
+        secure_tensorrt,
+        verify_weights,
+    )
+    from reframe.security import SecurityError
 
     configure_inference()
     verify_weights(args.model)
-    from ultralytics import YOLO
+    import tensorrt
+
+    if not secure_tensorrt(tensorrt.__version__):
+        raise SecurityError(
+            "TensorRT >=11.2 required before export; sync the accel lock"
+        )
 
     engine = (
         args.model.with_suffix(".engine")
         if args.manifest_only
-        else YOLO(str(args.model)).export(
+        else load_yolo(args.model).export(
             format="engine",
             device=0,
             imgsz=640,

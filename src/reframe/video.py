@@ -42,4 +42,11 @@ def open_video(path):
         stream = container.streams.video[0]
         stream.codec_context.thread_count = 2
     stream.thread_type = "AUTO"
+    if stream.width >= 2560 and stream.codec_context.name in {"h264", "hevc"}:
+        # This is a sampled analysis stream, never mpv's presentation stream.
+        # Disposable B frames need not be reconstructed to obtain ~10 Hz samples.
+        # Keep reference pictures (including reference B frames), timestamps and
+        # keyframes so seeking and scene transitions remain correct. Measured
+        # NVDEC seek/decode cost is nearly halved on the 4K60 HEVC fixture.
+        stream.codec_context.skip_frame = "NONREF"
     return container

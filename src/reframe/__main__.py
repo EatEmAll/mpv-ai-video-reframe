@@ -4,25 +4,26 @@ import argparse
 import json
 import subprocess
 import sys
+from pathlib import Path
 
-from .runtime import find_mpv
+from .runtime import find_mpv, validate_backend_runtime
 
 
 def doctor(mpv_path=None):
-    from .models import configure_inference, prepare_weights
+    validate_backend_runtime(Path.cwd())
+    from .models import configure_inference, load_yolo, prepare_weights
 
     configure_inference()
     weights = prepare_weights()
     import av
     import python_mpv_jsonipc  # noqa: F401
     import torch
-    from ultralytics import YOLO
 
     mpv = find_mpv(mpv_path)
     version = subprocess.run(
         [mpv, "--version"], capture_output=True, text=True, encoding="utf-8", check=True
     ).stdout.splitlines()[0]
-    model = YOLO(str(weights))
+    model = load_yolo(weights)
     report = {
         "mpv": version,
         "mpv_path": mpv,
@@ -78,6 +79,10 @@ def main():
                 "--managed requires --session-id, --lua-client, --backend-dir and --output-dir"
             )
         if args.managed:
+            try:
+                validate_backend_runtime(args.backend_dir)
+            except ValueError as error:
+                parser.error(str(error))
             from .managed import BackendBusyError, run_managed
 
             try:
@@ -96,6 +101,10 @@ def main():
                 raise SystemExit(5) from None
             return
     if args.command == "doctor":
+        try:
+            validate_backend_runtime(Path.cwd())
+        except ValueError as error:
+            parser.error(str(error))
         raise SystemExit(doctor(args.mpv_path))
     parser.error("attach requires --managed; enable the extension from mpv")
 

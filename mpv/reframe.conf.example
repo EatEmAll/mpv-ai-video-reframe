@@ -7,3 +7,5 @@ toggle_key=Ctrl+r
 rate=10
 model=
 debug_osd=no
+# Persistent badge above the stock OSC; does not replace player controls.
+status_indicator=yes

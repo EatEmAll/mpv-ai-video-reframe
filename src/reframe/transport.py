@@ -17,6 +17,46 @@ def connect_mpv(endpoint, *, player_pid=None, **kwargs):
         original = getattr(library, name)
 
         class VerifiedSocket(original):
+            def __init__(self, *args, **options):
+                if os.name != "nt":
+                    super().__init__(*args, **options)
+                    return
+                # Scope a module proxy to construction; never mutate the shared
+                # ctypes DLL function or open an impersonation-capable handle.
+                native = library._kernel32
+
+                class IdentificationAPI:
+                    def __getattr__(self, name):
+                        return getattr(native, name)
+
+                    def CreateFileW(
+                        self,
+                        path,
+                        access,
+                        share,
+                        attributes,
+                        disposition,
+                        flags,
+                        template,
+                    ):
+                        from .windows_security import open_pipe_identification
+
+                        return open_pipe_identification(
+                            path,
+                            access,
+                            share,
+                            attributes,
+                            disposition,
+                            flags,
+                            template,
+                        )
+
+                library._kernel32 = IdentificationAPI()
+                try:
+                    super().__init__(*args, **options)
+                finally:
+                    library._kernel32 = native
+
             def start(self):
                 try:
                     if os.name == "nt":
@@ -27,30 +67,11 @@ def connect_mpv(endpoint, *, player_pid=None, **kwargs):
                         # Check after connect too. The private parent prevents
                         # other users replacing the endpoint between checks.
                         validate_endpoint(endpoint)
-                        import socket
-                        import struct
-
-                        if hasattr(socket, "SO_PEERCRED"):
-                            pid, uid, _ = struct.unpack(
-                                "3i",
-                                self.socket.getsockopt(
-                                    socket.SOL_SOCKET, socket.SO_PEERCRED, 12
-                                ),
-                            )
-                            if uid != os.getuid() or (
-                                player_pid is not None and pid != player_pid
-                            ):
-                                raise SecurityError("Unexpected Unix IPC peer")
-                        elif hasattr(self.socket, "getpeereid"):
-                            uid, _ = self.socket.getpeereid()
-                            if uid != os.getuid():
-                                raise SecurityError("Unexpected Unix IPC peer")
-                        else:
-                            raise SecurityError(
-                                "Native Unix peer credential API unavailable"
-                            )
+                        verify_unix_peer(self.socket, player_pid=player_pid)
                 except BaseException:
                     self.stop(join=False)
+                    if os.name == "nt":
+                        self._close()
                     raise
                 super().start()
 
@@ -61,3 +82,22 @@ def connect_mpv(endpoint, *, player_pid=None, **kwargs):
             return library.MPV(start_mpv=False, ipc_socket=endpoint, **kwargs)
         finally:
             setattr(library, name, original)
+
+
+def verify_unix_peer(connection, *, player_pid=None):
+    import socket
+    import struct
+
+    if hasattr(socket, "SO_PEERCRED"):
+        pid, uid, _ = struct.unpack(
+            "3i",
+            connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12),
+        )
+        if uid != os.getuid() or (player_pid is not None and pid != player_pid):
+            raise SecurityError("Unexpected Unix IPC peer")
+    elif hasattr(connection, "getpeereid"):
+        uid, _ = connection.getpeereid()
+        if uid != os.getuid():
+            raise SecurityError("Unexpected Unix IPC peer")
+    else:
+        raise SecurityError("Native Unix peer credential API unavailable")

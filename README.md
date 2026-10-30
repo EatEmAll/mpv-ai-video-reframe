@@ -4,7 +4,8 @@ The extension runs inside ordinary mpv and supervises a local Python companion.
 `Ctrl+r` toggles following; no custom player executable is required. The script,
 IPC transport, installer and backend control code support Windows, Linux and
 macOS. Inference selects CUDA, Apple MPS or CPU. Windows/NVIDIA is the platform
-validated locally; Linux/macOS and MPS/CPU performance are not yet verified.
+validated locally, including limited CPU fallback measurements. Native Linux/macOS
+playback and MPS performance are not yet verified.
 
 ## Design influences and acknowledgements
 
@@ -30,8 +31,13 @@ revisions studied.
 
 ## Prepare the backend
 
-Install mpv 0.41 or newer, Python 3.12, and uv. Extract the source release or clone
-this repository, then run from its root:
+Install mpv, Python 3.12, and uv. Windows requires a reviewed 0.41.x player;
+see [player provenance](MPV_PROVENANCE.md) for the tested build and codec fixes. Extract the source release or clone
+this repository, then run from its root. On Windows the backend, virtual
+environment and base Python installation must use ASCII-only absolute paths;
+Unicode media and mpv configuration paths remain supported. The Windows setup
+script checks this before creating an editable environment. See
+[Windows setup and verification](WINDOWS_VERIFICATION.md).
 
 ```text
 uv sync --locked
@@ -42,14 +48,15 @@ uv run reframe doctor
 SHA-256 before loading, and reports the selected device. Unknown weights are
 rejected; see [SECURITY.md](SECURITY.md) and the
 [review and release blockers](SECURITY_REVIEW.md).
-On Windows/NVIDIA, the accelerated setup used for the existing performance gates is:
+On Windows/NVIDIA, use the supported TensorRT 11 setup/export path:
 
 ```text
-uv sync --locked --group accel
-uv run --group accel reframe doctor
-uv run --group accel python scripts/export_engine.py
+./scripts/setup_windows.ps1 -Accel
+uv run --locked --group accel python scripts/export_windows_engine.py
 ```
 
+The locked Windows exporter builds FP32 with TF32 allowed; it does not require
+the additional ModelOpt dependency needed by TensorRT 11 FP16 export.
 TensorRT engines are specific to the local GPU/runtime. Keep the `.pt` weights;
 the backend uses them when a cached engine is incompatible. CPU/MPS may not keep
 up at high resolutions or speeds. Playback-time activation never installs packages
@@ -91,7 +98,7 @@ debug_osd=no
 on Unix. `model` may name the pinned `.pt` weights or a locally built CUDA `.engine`
 with matching verified weights and device/runtime/hash metadata; relative model
 paths refer to the backend directory. Other model formats and unknown weights
-are refused. `rate` is detection sampling (5â€“15), not the
+are refused. `rate` is detection sampling (5-15), not the
 camera framerate. Configuration changes take effect at the next enable, except
 the default key binding, which is established at script load. Existing user key
 bindings take precedence. Set `toggle_key=` and bind `script-binding reframe/toggle`
@@ -108,8 +115,12 @@ script-message-to reframe reframe-status
 
 ## Behavior and recovery
 
+The extension preserves mpv's configured `video-timing-offset` while following;
+it does not force a shorter rendering deadline. Saved settings are still restored
+on release.
+
 The existing camera path remains in Python: full-height fill, box-aware following,
-look-ahead and damped motion, with updates limited by source FPS Ã— speed and the
+look-ahead and damped motion, with updates limited by source FPS times speed and the
 display rate. A person wider than the visible crop cannot fit completely without
 changing this full-height requirement. Lua does not add a second camera loop.
 
@@ -129,13 +140,27 @@ rejected, including another managed companion.
 A configured IPC endpoint is reused only after ownership, permissions and player
 identity checks. Otherwise the script creates a random Windows named pipe or a
 Unix socket in a private owned runtime directory. IPC remains available for that
-player session, including when following is disabled. Only the script-created
-endpoint is hardened; permissive existing endpoints are rejected. IPC is local
+player session, including when following is disabled. On Unix, only the script-created
+socket is hardened inside its private parent. Windows requires trusted mpv
+0.41.x, whose reviewed implementation creates every pipe instance with a private
+security descriptor atomically. Unknown/older versions and permissive endpoints
+are refused; Windows DACLs are never repaired after creation. IPC is local
 player control; session IDs are freshness checks, not authentication. The extension
 has no footage-upload operation. See the
 [network and privacy audit](SECURITY_REVIEW.md#outbound-traffic-privacy-and-logs)
 for dependency limits. Session status is available in `user-data/reframe`;
 local lifecycle and camera logs are under `<backend_dir>/runs/lua/<session-id>/`.
+A persistent `Reframe: OFF / STARTING / ON / SUSPENDED / ERROR` badge appears at
+the lower left, about 100 pixels above the bottom, above the stock OSC. It uses
+this script's ASS overlay and leaves the stock controls intact. Loading/ready,
+waiting and stopping have distinct suffixes; requested enable alone never shows
+ON. The badge updates on lifecycle, configuration and OSD geometry changes.
+Set `status_indicator=no` in `script-opts/reframe.conf` to hide it. An absent badge
+can mean the extension was never loaded: verify that the selected mpv config
+contains `scripts/reframe.lua` and `script-opts/reframe.conf`, or explicitly load
+the script with the configured backend. No live user configuration is installed
+by merely checking out this repository.
+
 Logs are retained until you remove them. Startup stderr is bounded and reported
 in mpv's log on process completion. Use `reframe-status` to locate the session.
 
@@ -183,11 +208,21 @@ uv run ruff format --check src scripts tests
 Choose a new test directory under the trusted checkout for each run (replace `unique-id`); tests intentionally reject broadly writable temporary ancestors.
 
 The Lua lifecycle test runs in mpv's actual interpreter using a mocked player
-API and requires no GPU. Focused Windows rendered checks in the development
-workspace passed 1x/4x quality and control gates, full-height fill and actual
-backend crash restoration. Native Linux/macOS, CPU/MPS performance, a stable mpv
-0.41.0 binary, the complete playback matrix and manual smoothness review remain
-pending. This is a preview; test footage and benchmark artifacts are not included.
+API and requires no GPU. Native Windows checks cover stable mpv lifecycle,
+control/restore behavior, full-height fill, restricted-loader CUDA/CPU inference,
+locally built TensorRT 11.2 inference/export, and the status badge. Native WSL
+permission/peer tests are security evidence, not Linux GUI playback verification.
+
+See [measured Windows results](WINDOWS_VERIFICATION_RESULTS.md) and
+[reproduction instructions](WINDOWS_VERIFICATION.md) for exact hardware, source
+manifests and retained failures. The integrated TensorRT 4K/1x and CPU 1080p/1x
+runs pass all gates. **4K/2x and fast PyTorch profiles are not verified:** the final
+integrated engine 4K/2x run exceeds the unchanged frame-health budget. Repeated
+successful controlled experiments do not erase that failed integration run.
+Native Linux/macOS playback, MPS, the remaining full matrix and manual perceptual
+smoothness review remain pending. This is a preview, not universal real-time
+performance or platform parity. No private footage or raw benchmark artifacts
+are included in the source distribution.
 
 ## License
 

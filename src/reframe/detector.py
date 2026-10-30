@@ -14,10 +14,9 @@ class Detector:
         import numpy as np
         import torch
         import yaml
-        from ultralytics import YOLO
         from ultralytics.trackers.byte_tracker import BYTETracker
 
-        from .models import select_model
+        from .models import load_yolo, select_model
 
         cuda = torch.cuda.is_available()
         self.device = (
@@ -30,7 +29,7 @@ class Detector:
             raise RuntimeError(
                 "TensorRT engines require CUDA; select local .pt weights"
             )
-        self.model = YOLO(str(self.model_path))
+        self.model = load_yolo(self.model_path)
         config = yaml.safe_load(
             (Path(__file__).parent / "trackers/bytetrack_reframe.yaml").read_text()
         )

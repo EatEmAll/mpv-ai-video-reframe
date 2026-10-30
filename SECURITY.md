@@ -1,26 +1,24 @@
 # Security policy
 
-This is a private, unreleased preview. Only the current `main` revision receives
-security fixes; there are no supported public releases. Do not publish a preview
-until the blockers in [SECURITY_REVIEW.md](SECURITY_REVIEW.md) and issue #2 are
-resolved. Passing unit tests does not establish platform or dependency safety.
+This is a public source preview with no tagged releases or supported public
+binary releases. Only current `main` receives security fixes. Public repository
+visibility does not establish release readiness; issue #2 and the remaining gates
+in [SECURITY_REVIEW.md](SECURITY_REVIEW.md) still apply.
 
 ## Reporting privately
 
-While this repository is private, authorized collaborators can report to the
-maintainer in a [new private-repository issue](https://github.com/EatEmAll/mpv-ai-video-reframe/issues/new).
-Verify the repository still displays **Private** before posting sensitive details;
-all repository collaborators can read these reports. Start with a minimal text
-description and a synthetic reproducer. Do not attach private footage, credentials,
-complete user logs, or exploit payloads containing personal data.
+Use GitHub's [Report a vulnerability](https://github.com/EatEmAll/mpv-ai-video-reframe/security/advisories/new)
+from the repository's [Security page](https://github.com/EatEmAll/mpv-ai-video-reframe/security).
+GitHub private vulnerability reporting is enabled (`GET .../private-vulnerability-reporting`
+returned `enabled:true` on 2026-10-30). An unauthenticated fetch sees the public
+Report a vulnerability entry; following it redirects to GitHub sign-in. No bogus
+advisory was submitted, and a separate external reporter identity was not tested.
 
-If you do not have repository access, there is currently no verified external
-private reporting channel. Do not post a public issue or disclose details in
-another project's tracker. The maintainer must arrange a private contact channel
-when granting preview access. Before any public release, enable GitHub private
-vulnerability reporting (and verify the external reporter flow) or publish a
-maintainer-approved security contact. The reporting API returned HTTP 404 on
-2026-10-30; external private reporting is **not verified/configured** by this work.
+Ordinary repository issues are **public**. Never put undisclosed vulnerability
+details there. Start the private report with a minimal description and synthetic
+reproducer; omit private footage, credentials and complete user logs. If the
+private form is unavailable, wait for a maintainer-approved private contact rather
+than posting sensitive details publicly.
 
 The maintainer aims to acknowledge reports within seven days and give a triage
 update within fourteen days. These are response targets, not a staffed service
@@ -55,6 +53,5 @@ weights, in trusted storage, with matching device/runtime/content metadata.
 it cannot establish upstream authenticity or make an arbitrary engine safe.
 Never bless an engine downloaded from someone else.
 
-See [the review](SECURITY_REVIEW.md) for native permission evidence, remaining
-Windows startup exposure, dependency advisories, outbound network behavior,
+See [the review](SECURITY_REVIEW.md) for native permission evidence, Windows build requirements, dependency advisories, outbound network behavior,
 privacy, retention, and integration checks still required before release.

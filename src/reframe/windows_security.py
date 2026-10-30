@@ -170,7 +170,7 @@ def check_pipe(name, *, player_pid=None, harden=False):
     while True:
         handle = kernel.CreateFileW(
             "\\\\.\\pipe\\" + name,
-            0x20000 | (0x40000 if harden else 0),
+            0x20000,
             0,
             None,
             3,
@@ -203,42 +203,64 @@ def verify_pipe_handle(handle, *, player_pid=None, harden=False):
     try:
         if not owner or sid_text(owner) != user_sid():
             raise SecurityError("IPC server is not owned by the current user")
-        if harden:
-            restricted = private_descriptor()
-            try:
-                present, defaulted, new_dacl = w.BOOL(), w.BOOL(), P()
-                checked(
-                    adv.GetSecurityDescriptorDacl(
-                        restricted,
-                        c.byref(present),
-                        c.byref(new_dacl),
-                        c.byref(defaulted),
-                    )
-                )
-                error = adv.SetSecurityInfo(handle, 6, 4, None, None, new_dacl, None)
-                if error:
-                    raise c.WinError(error)
-            finally:
-                kernel.LocalFree(restricted)
-        else:
-            inspect(owner, dacl, private=True)
+        # Never repair an insecure pipe: connected handles survive DACL changes.
+        inspect(owner, dacl, private=True)
+        require_secure_player(pid.value)
     finally:
         kernel.LocalFree(descriptor)
-    if harden:
-        # Verify a freshly queried descriptor after mutation.
-        error = adv.GetSecurityInfo(
-            handle,
-            6,
-            5,
-            c.byref(owner),
-            None,
-            c.byref(dacl),
-            None,
-            c.byref(descriptor),
+
+
+def require_secure_player(player_pid):
+    """Gate before creation: reviewed mpv 0.41 uses an atomic private descriptor.
+
+    A trusted executable/version is a prerequisite, not attestation against a
+    malicious same-account binary. Never infer startup safety from a later ACL.
+    """
+    import re
+    import subprocess
+
+    from .security import trusted_executable
+
+    kernel.OpenProcess.argtypes = [w.DWORD, w.BOOL, w.DWORD]
+    kernel.OpenProcess.restype = w.HANDLE
+    kernel.QueryFullProcessImageNameW.argtypes = [
+        w.HANDLE,
+        w.DWORD,
+        w.LPWSTR,
+        c.POINTER(w.DWORD),
+    ]
+    handle = kernel.OpenProcess(0x1000, False, player_pid)
+    checked(handle)
+    try:
+        buffer = c.create_unicode_buffer(32768)
+        size = w.DWORD(len(buffer))
+        checked(kernel.QueryFullProcessImageNameW(handle, 0, buffer, c.byref(size)))
+        executable = trusted_executable(buffer.value)
+    finally:
+        kernel.CloseHandle(handle)
+    result = subprocess.run(
+        [str(executable), "--no-config", "--version"],
+        capture_output=True,
+        timeout=5,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    version = re.match(rb"mpv v?(\d+)\.(\d+)\.", result.stdout)
+    if result.returncode or not version or tuple(map(int, version.groups())) != (0, 41):
+        raise SecurityError(
+            "Windows requires reviewed mpv 0.41.x with atomic private IPC creation"
         )
-        if error:
-            raise c.WinError(error)
-        try:
-            inspect(owner, dacl, private=True)
-        finally:
-            kernel.LocalFree(descriptor)
+
+
+def open_pipe_identification(
+    path, access, share, attributes, disposition, flags, template
+):
+    """Open the data handle with READ_CONTROL and identification-only SQOS."""
+    return kernel.CreateFileW(
+        path,
+        access | 0x20000,
+        share,
+        attributes,
+        disposition,
+        (flags & ~0x30000) | 0x110000,
+        template,
+    )

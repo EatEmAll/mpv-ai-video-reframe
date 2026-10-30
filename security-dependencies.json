@@ -1,6 +1,6 @@
 {
-  "lock_sha256_lf": "b70a8760906780f3604ceb28536b45bc7fb492569d758ed4060d8eb542b94638",
-  "queried_at": "2026-10-30T17:32:34.222239+00:00",
+  "lock_sha256_lf": "5a105e990aa97d00725b28dea4aa7c4be0ba051b01326d73a2c68f929f200fa4",
+  "queried_at": "2026-10-30T17:56:46.371184+00:00",
   "source": "https://api.osv.dev/v1/querybatch",
   "scope": "all locked registry packages; CUDA local version suffix normalized",
   "packages": [
@@ -341,17 +341,17 @@
     },
     {
       "name": "tensorrt-cu13",
-      "version": "10.16.1.11",
+      "version": "11.2.1.2",
       "advisories": []
     },
     {
       "name": "tensorrt-cu13-bindings",
-      "version": "10.16.1.11",
+      "version": "11.2.1.2",
       "advisories": []
     },
     {
       "name": "tensorrt-cu13-libs",
-      "version": "10.16.1.11",
+      "version": "11.2.1.2",
       "advisories": []
     },
     {

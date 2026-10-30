@@ -41,7 +41,7 @@ def prepare_weights():
     try:
         with (
             os.fdopen(fd, "wb") as file,
-            urllib.request.urlopen(WEIGHTS_URL, timeout=30) as response,
+            _download_response(urllib.request, WEIGHTS_URL) as response,
         ):
             if not response.url.startswith("https://"):
                 raise SecurityError("Insecure model redirect")
@@ -70,9 +70,20 @@ def prepare_weights():
 
 def configure_inference():
     """Set controls before importing Ultralytics; do not mutate user settings."""
+    import sys
+
+    tasks = sys.modules.get("ultralytics.nn.tasks")
+    if tasks is not None and (not tasks.SAFE_LOAD or not tasks._SafeLoad.SUPPORTED):
+        raise SecurityError(
+            "Ultralytics was initialized without a supported restricted loader"
+        )
     os.environ["YOLO_AUTOINSTALL"] = "false"
     os.environ["YOLO_OFFLINE"] = "true"
     os.environ["ULTRALYTICS_SAFE_LOAD"] = "true"
+    os.environ["TORCH_FORCE_WEIGHTS_ONLY_LOAD"] = "1"
+    from .network import install_network_guard
+
+    install_network_guard()
     os.environ["YOLO_CONFIG_DIR"] = str(private_dir(Path("runs") / "ultralytics"))
 
 
@@ -81,7 +92,16 @@ def sha256(path):
         return hashlib.file_digest(file, "sha256").hexdigest()
 
 
+def secure_tensorrt(runtime):
+    import re
+
+    version = re.match(r"^(\d+)\.(\d+)(?:\.|$)", runtime)
+    return bool(version and tuple(map(int, version.groups())) >= (11, 2))
+
+
 def compatible_engine(engine, weights, capability, runtime):
+    if not secure_tensorrt(runtime):
+        return False
     manifest = Path(str(engine) + ".json")
     if not engine.is_file() or not weights.is_file() or not manifest.is_file():
         return False
@@ -142,6 +162,8 @@ def record_engine(weights, engine):
     import tensorrt
     import torch
 
+    if not secure_tensorrt(tensorrt.__version__):
+        raise SecurityError("TensorRT >=11.2 required by CVE-2026-65122")
     data = {
         "capability": list(torch.cuda.get_device_capability(0)),
         "gpu": torch.cuda.get_device_name(0),
@@ -163,3 +185,36 @@ def record_engine(weights, engine):
     finally:
         Path(temporary).unlink(missing_ok=True)
     return manifest
+
+
+def _download_response(request, url):
+    # Only this explicit, fixed-URL setup operation can use Python networking.
+    from .network import setup_network
+
+    with setup_network():
+        return request.urlopen(url, timeout=30)
+
+
+def load_yolo(path):
+    """Require effective restricted loading, even after an earlier upstream import."""
+    configure_inference()
+    from ultralytics import YOLO
+    from ultralytics.nn import tasks
+
+    if not tasks.SAFE_LOAD or not tasks._SafeLoad.SUPPORTED:
+        raise SecurityError(
+            "Restricted Ultralytics loader unavailable; restart with safe loading enabled"
+        )
+    path = Path(path)
+    if path.suffix == ".pt":
+        path = verify_weights(path)
+    elif path.suffix == ".engine":
+        import torch
+
+        capability = (
+            torch.cuda.get_device_capability(0) if torch.cuda.is_available() else None
+        )
+        path = select_model(path, capability)
+    else:
+        raise SecurityError("Unsupported model format")
+    return YOLO(str(path))

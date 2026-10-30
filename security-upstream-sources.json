@@ -1,0 +1,36 @@
+{
+  "reviewed_at": "2026-10-30",
+  "ultralytics_version": "8.4.193",
+  "sources": [
+    {
+      "url": "https://raw.githubusercontent.com/ultralytics/ultralytics/v8.4.193/ultralytics/nn/tasks.py",
+      "sha256": "2a4be1150e038948d59400bec5258eee94288e0807b3543dee99f9e931119dc6",
+      "matches_installed": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ultralytics/ultralytics/v8.4.193/ultralytics/utils/checks.py",
+      "sha256": "16191e5947b3ba7c579695bb64ef8f5e251fa4e19f6756cd396adfcb8a03762f",
+      "matches_installed": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ultralytics/ultralytics/v8.4.193/ultralytics/utils/patches.py",
+      "sha256": "af2b3b50cd3ef067295a9f861b0d880d5df575d6626280dae9cc2833b4ed3dba",
+      "matches_installed": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ultralytics/ultralytics/v8.4.193/ultralytics/data/utils.py",
+      "sha256": "6e375b84c07d1cdacac15915132bc075d3655ee668a68f5dd295c64aa2216cf7",
+      "matches_installed": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ultralytics/ultralytics/v8.4.193/ultralytics/utils/downloads.py",
+      "sha256": "9e7274b7020b245d82a1524fde01fb241b05a4c804c574106a373f19f91752df",
+      "matches_installed": true
+    },
+    {
+      "url": "https://raw.githubusercontent.com/ultralytics/ultralytics/v8.4.193/ultralytics/utils/__init__.py",
+      "sha256": "ef9d1ba99b79db055a760e78b78e6a32f1341bab242bc560dd891f425b599114",
+      "matches_installed": true
+    }
+  ]
+}

@@ -3,8 +3,7 @@ local mp = require 'mp'
 local utils = require 'mp.utils'
 local options = require 'mp.options'
 local o = {backend_dir='', python_path='', autostart=false, toggle_key='Ctrl+r',
-           rate=10, model='', debug_osd=false}
-options.read_options(o, 'reframe')
+           rate=10, model='', debug_osd=false, status_indicator=true}
 local windows = package.config:sub(1,1) == '\\'
 local current, counter, endpoint = nil, 0, nil
 local enabled, pending_enable = false, false
@@ -12,8 +11,31 @@ local start
 local saved_names = {panscan='number', ['video-align-x']='number', cache='string',
                      ['video-timing-offset']='number', ['keepaspect-window']='boolean'}
 local function show(text) mp.osd_message('Reframe: '..text, 3) end
+-- A separate ASS overlay leaves the stock OSC and other scripts' OSD intact.
+-- Render only on state/options/geometry changes, never at video frame rate.
+local indicator = mp.create_osd_overlay('ass-events')
+local indicator_state = 'disabled'
+local function render_indicator()
+    if not o.status_indicator then indicator:remove(); return end
+    local dim = mp.get_property_native('osd-dimensions') or {}
+    local w, h = tonumber(dim.w) or 1280, tonumber(dim.h) or 720
+    if w <= 0 or h <= 0 then indicator:remove(); return end
+    local labels = {disabled='OFF', starting='STARTING', loading='STARTING (loading)',
+        ready='STARTING (ready)', active='ON', waiting='SUSPENDED (waiting)',
+        suspended='SUSPENDED', stopping='OFF (stopping)', error='ERROR'}
+    local colors = {active='80E080', error='8080FF', suspended='80DFFF', waiting='80DFFF'}
+    local size = math.max(14, math.min(22, h / 40))
+    local x, y = math.floor(math.min(20, w / 20)), math.floor(math.max(8, h - math.max(100, h * .14)))
+    indicator.res_x, indicator.res_y = w, h
+    indicator.data = string.format('{\\an7\\pos(%d,%d)\\fs%d\\bord2\\shad0\\1c&H%s&\\3c&H202020&}Reframe: %s',
+        x, y, size, colors[indicator_state] or 'DDDDDD', labels[indicator_state] or 'ERROR')
+    indicator:update()
+end
+options.read_options(o, 'reframe', render_indicator)
 local function publish(s, state, reason)
     if s then s.state, s.reason = state, reason or '' end
+    indicator_state = state
+    render_indicator()
     mp.set_property_native('user-data/reframe', {state=state, reason=reason or '',
         session=s and s.id or '', log_dir=s and s.output or ''})
 end
@@ -33,7 +55,8 @@ end
 local function stop(reason)
     enabled, pending_enable = false, false
     local s = current
-    if not s or s.stopping then return end
+    if not s then publish(nil, 'disabled'); return end
+    if s.stopping then return end
     s.stopping, s.stop_at = true, mp.get_time()
     publish(s, 'stopping', reason)
     control(s, 'stop', {reason=reason or 'user'})
@@ -118,12 +141,13 @@ start = function()
         return
     end
     options.read_options(o, 'reframe')
+    local function startup_error(text) publish(nil, 'error', text); show(text) end
     if o.backend_dir == '' or not utils.file_info(utils.join_path(o.backend_dir, 'pyproject.toml')) then
-        show('Set backend_dir in script-opts/reframe.conf to the prepared backend directory')
+        startup_error('Set backend_dir in script-opts/reframe.conf to the prepared backend directory')
         return
     end
-    if o.rate < 5 or o.rate > 15 or o.rate % 1 ~= 0 then show('rate must be an integer from 5 to 15'); return end
-    if not utils.file_info(executable()) then show('Python environment missing; prepare the backend first'); return end
+    if o.rate < 5 or o.rate > 15 or o.rate % 1 ~= 0 then startup_error('rate must be an integer from 5 to 15'); return end
+    if not utils.file_info(executable()) then startup_error('Python environment missing; prepare the backend first'); return end
     local function security(command, pipe, harden)
         local args = {executable(), '-I', '-m', 'reframe.security', command,
             '--player-pid', tostring(utils.getpid()), '--backend', o.backend_dir,
@@ -139,14 +163,14 @@ start = function()
     local pipe = mp.get_property('input-ipc-server', '')
     if pipe == '' then
         endpoint = security('prepare')
-        if not endpoint then show('IPC preparation failed; check trusted paths and permissions'); return end
+        if not endpoint then startup_error('IPC preparation failed; check trusted paths and permissions'); return end
         local ok = mp.set_property('input-ipc-server', endpoint)
-        if not ok then show('Cannot enable private IPC'); return end
+        if not ok then startup_error('Cannot enable private IPC'); return end
         pipe = endpoint
     end
-    if not security('verify', pipe, pipe == endpoint) then
+    if not security('verify', pipe, not windows and pipe == endpoint) then
         if pipe == endpoint then mp.set_property('input-ipc-server', '') end
-        show('IPC ownership or permissions rejected; see SECURITY.md')
+        startup_error('IPC ownership or permissions rejected; see SECURITY.md')
         return
     end
     counter = counter + 1
@@ -209,6 +233,10 @@ mp.register_script_message('reframe-status', function()
 end)
 mp.register_event('shutdown', function()
     if current then control(current, 'stop', {reason='shutdown'}) end
+    indicator:remove()
     -- mpv owns endpoint lifetime. Never unlink an endpoint by pathname here.
 end)
+mp.observe_property('osd-dimensions', 'native', render_indicator)
+mp.observe_property('fullscreen', 'bool', render_indicator)
+publish(nil, 'disabled')
 if o.autostart then mp.add_timeout(0, start) end

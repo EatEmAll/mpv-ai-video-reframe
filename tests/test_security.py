@@ -338,10 +338,8 @@ def test_native_windows_pipe_acl_hardening_and_wrong_pid():
             validate_endpoint(name, player_pid=os.getpid() + 1, harden=True)
         kernel.DisconnectNamedPipe(pipe)
         kernel.ConnectNamedPipe(pipe, None)
-        validate_endpoint(name, player_pid=os.getpid(), harden=True)
-        kernel.DisconnectNamedPipe(pipe)
-        kernel.ConnectNamedPipe(pipe, None)
-        validate_endpoint(name, player_pid=os.getpid())
+        with pytest.raises(SecurityError):
+            validate_endpoint(name, player_pid=os.getpid(), harden=True)
     finally:
         kernel.CloseHandle(pipe)
 
@@ -443,3 +441,244 @@ def test_real_lua_preflight_backend_wait_and_stop(tmp_path):
     text = log.read_text(encoding="utf-8", errors="replace")
     assert result.returncode == 0, text
     assert "LUA_SECURITY_INTEGRATION_PASS" in text
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Native restricted-token access check")
+def test_mpv_atomic_pipe_denies_restricted_token():
+    import ctypes as c
+    import time
+    from ctypes import wintypes as w
+
+    from reframe.runtime import find_mpv
+    from reframe.windows_security import adv, checked, kernel
+
+    name = "reframe-restricted-" + os.urandom(12).hex()
+    process = subprocess.Popen(
+        [
+            find_mpv(),
+            "--no-config",
+            "--media-controls=no",
+            "--vo=null",
+            "--ao=null",
+            "--idle=yes",
+            "--input-ipc-server=" + name,
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+    token, restricted, sid = w.HANDLE(), w.HANDLE(), c.c_void_p()
+
+    class SidAttributes(c.Structure):
+        _fields_ = [("sid", c.c_void_p), ("attributes", w.DWORD)]
+
+    adv.ConvertStringSidToSidW.argtypes = [w.LPCWSTR, c.POINTER(c.c_void_p)]
+    adv.CreateRestrictedToken.argtypes = [
+        w.HANDLE,
+        w.DWORD,
+        w.DWORD,
+        c.c_void_p,
+        w.DWORD,
+        c.c_void_p,
+        w.DWORD,
+        c.c_void_p,
+        c.POINTER(w.HANDLE),
+    ]
+    adv.ImpersonateLoggedOnUser.argtypes = [w.HANDLE]
+    try:
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                # Inspection only: no hardening, including the first instance.
+                validate_endpoint(name, player_pid=process.pid)
+                break
+            except OSError:
+                if time.monotonic() > deadline:
+                    raise
+                time.sleep(0.02)
+        checked(
+            adv.OpenProcessToken(kernel.GetCurrentProcess(), 0xF01FF, c.byref(token))
+        )
+        checked(adv.ConvertStringSidToSidW("S-1-5-7", c.byref(sid)))
+        restriction = SidAttributes(sid, 0)
+        checked(
+            adv.CreateRestrictedToken(
+                token, 1, 0, None, 0, None, 1, c.byref(restriction), c.byref(restricted)
+            )
+        )
+        checked(adv.ImpersonateLoggedOnUser(restricted))
+        try:
+            handle = kernel.CreateFileW(
+                "\\\\.\\pipe\\" + name, 0xC0000000, 0, None, 3, 0x110000, None
+            )
+            error = c.get_last_error()
+            if handle != w.HANDLE(-1).value:
+                kernel.CloseHandle(handle)
+                raise AssertionError("restricted token connected")
+            assert error == 5, error
+        finally:
+            checked(adv.RevertToSelf())
+        # Normal account still connects, with the actual verified data handle.
+        from reframe.transport import connect_mpv
+
+        connection = connect_mpv(name, player_pid=process.pid)
+        try:
+            assert connection.command("get_property", "pid") == process.pid
+        finally:
+            connection.terminate()
+    finally:
+        if sid:
+            kernel.LocalFree(sid)
+        if restricted:
+            kernel.CloseHandle(restricted)
+        if token:
+            kernel.CloseHandle(token)
+        process.terminate()
+        process.wait(timeout=5)
+
+
+def test_network_guard_denies_tcp_dns_and_udp_in_isolated_process():
+    code = """from reframe.models import configure_inference
+import socket
+from reframe.security import SecurityError
+configure_inference()
+for operation in (lambda: socket.getaddrinfo('example.com',443),
+                  lambda: socket.socket().connect(('127.0.0.1',9)),
+                  lambda: socket.socket(type=socket.SOCK_DGRAM).sendto(b'x',('127.0.0.1',9))):
+    try: operation()
+    except SecurityError: pass
+    else: raise AssertionError('network allowed')
+from reframe.network import setup_network
+with setup_network():
+    socket.getaddrinfo('127.0.0.1',443,flags=socket.AI_NUMERICHOST)
+print('NETWORK_DENIAL_PASS')
+"""
+    result = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True)
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    assert b"NETWORK_DENIAL_PASS" in result.stdout
+
+
+def test_restricted_upstream_paths_without_model_or_gpu(tmp_path):
+    # Real pinned dependency code, with deserialization replaced by a benign
+    # recorder. No arbitrary checkpoint or exploit string is executed.
+    code = """from reframe.models import configure_inference, load_yolo
+from reframe.security import SecurityError
+configure_inference()
+from ultralytics.nn import tasks
+from ultralytics.utils import downloads
+from contextlib import contextmanager
+assert tasks.SAFE_LOAD and tasks._SafeLoad.SUPPORTED
+calls=[]
+@contextmanager
+def loading(_): yield
+tasks._SafeLoad.loading = loading
+downloads.attempt_download_asset = lambda p: p
+def load(*a, **kw):
+    calls.append(kw)
+    raise ModuleNotFoundError('synthetic missing dependency', name='not_a_real_dependency')
+tasks.torch_load=load
+tasks.check_requirements=lambda *a,**k: (_ for _ in ()).throw(AssertionError('installer reached'))
+try: tasks.torch_safe_load('fixture.pt')
+except ModuleNotFoundError: pass
+else: raise AssertionError('load accepted')
+assert len(calls)==1 and calls[0]['weights_only'] is True
+# Guard the model-construction activation entry, without evaluating a payload.
+tasks.eval=lambda *a: (_ for _ in ()).throw(AssertionError('eval reached'))
+try: tasks.parse_model({'nc':1,'activation':'unsupported_activation','backbone':[],'head':[]},3,False)
+except (ValueError,TypeError): pass
+else: raise AssertionError('invalid activation accepted')
+tasks._SafeLoad.SUPPORTED=False
+try: load_yolo('fixture.pt')
+except SecurityError: pass
+else: raise AssertionError('unsafe fallback accepted')
+print('RESTRICTED_PATH_PASS')
+"""
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", code], capture_output=True, timeout=25
+    )
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    assert b"RESTRICTED_PATH_PASS" in result.stdout
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Native data-handle SQOS")
+def test_native_data_handle_is_identification_only():
+    import ctypes as c
+    from ctypes import wintypes as w
+
+    from reframe.windows_security import adv, checked, kernel, open_pipe_identification
+
+    kernel.CreateNamedPipeW.argtypes = [
+        w.LPCWSTR,
+        w.DWORD,
+        w.DWORD,
+        w.DWORD,
+        w.DWORD,
+        w.DWORD,
+        w.DWORD,
+        c.c_void_p,
+    ]
+    kernel.CreateNamedPipeW.restype = w.HANDLE
+    kernel.WriteFile.argtypes = [
+        w.HANDLE,
+        c.c_void_p,
+        w.DWORD,
+        c.POINTER(w.DWORD),
+        c.c_void_p,
+    ]
+    kernel.ReadFile.argtypes = kernel.WriteFile.argtypes
+    adv.ImpersonateNamedPipeClient.argtypes = [w.HANDLE]
+    adv.OpenThreadToken.argtypes = [w.HANDLE, w.DWORD, w.BOOL, c.POINTER(w.HANDLE)]
+    kernel.GetCurrentThread.restype = w.HANDLE
+    name = "\\\\.\\pipe\\reframe-sqos-" + os.urandom(12).hex()
+    server = kernel.CreateNamedPipeW(name, 3, 0, 1, 4096, 4096, 0, None)
+    assert server != w.HANDLE(-1).value
+    client, token = None, w.HANDLE()
+    try:
+        client = open_pipe_identification(name, 0xC0000000, 0, None, 3, 0, None)
+        assert client != w.HANDLE(-1).value
+        moved, buffer = w.DWORD(), c.create_string_buffer(1)
+        checked(kernel.WriteFile(client, b"x", 1, c.byref(moved), None))
+        checked(kernel.ReadFile(server, buffer, 1, c.byref(moved), None))
+        checked(adv.ImpersonateNamedPipeClient(server))
+        try:
+            checked(
+                adv.OpenThreadToken(kernel.GetCurrentThread(), 8, True, c.byref(token))
+            )
+            level, size = w.DWORD(), w.DWORD()
+            checked(
+                adv.GetTokenInformation(
+                    token, 9, c.byref(level), c.sizeof(level), c.byref(size)
+                )
+            )
+            assert level.value == 1  # SecurityIdentification, not SecurityImpersonation
+        finally:
+            checked(adv.RevertToSelf())
+    finally:
+        if token:
+            kernel.CloseHandle(token)
+        if client and client != w.HANDLE(-1).value:
+            kernel.CloseHandle(client)
+        kernel.CloseHandle(server)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Native running-image version gate")
+def test_unknown_windows_player_refused_before_endpoint_creation(monkeypatch):
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from reframe import security
+
+    # Isolate version refusal from the test interpreter installation ACL.
+    monkeypatch.setattr(security, "trusted_executable", lambda path: Path(path))
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *a, **k: SimpleNamespace(returncode=0, stdout=b"mpv v0.40.0\n"),
+    )
+    monkeypatch.setattr(
+        security,
+        "runtime_root",
+        lambda: (_ for _ in ()).throw(AssertionError("endpoint creation reached")),
+    )
+    with pytest.raises(SecurityError, match="0.41"):
+        security.prepare_endpoint(os.getpid())

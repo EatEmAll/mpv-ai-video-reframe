@@ -90,7 +90,7 @@ class IPC:
                 raise ViewChanged("Playback changed during view acquisition")
             self.enabled = True
             self.mpv.command("set_property", "keepaspect-window", False)
-        self.mpv.command("set_property", "video-timing-offset", 0.002)
+        # Preserve mpv/user render scheduling and its frame-health budget.
         self.mpv.command("set_property", "cache", "yes")
         self.mpv.command("set_property", "panscan", 1)
         self.last_align = None

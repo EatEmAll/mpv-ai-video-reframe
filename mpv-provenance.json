@@ -1,0 +1,172 @@
+{
+  "reviewed_at": "2026-10-30",
+  "scope": "Reviewed Windows portable player; not bundled or installed system-wide",
+  "distributor_release": "https://github.com/shinchiro/mpv-winbuild-cmake/releases/tag/20261021",
+  "asset_name": "mpv-x86_64-20261021-git-e471496c56.7z",
+  "asset_sha256": "4a355f3e89c83fabc730d33fb4e759dfec747806ed2287b61a90d1681b83e8d3",
+  "executable_sha256": "8c2e4d24eb961723cc5e2f1f4401982836e82c96e0e0a944c0576090fc48993f",
+  "mpv_version": "0.41.0-1227-ge471496c5",
+  "ffmpeg_commit": "9a861e9687d30e657d59521817cad18405995983",
+  "ffmpeg_security_source": "https://ffmpeg.org/security.html",
+  "ffmpeg_security_source_sha256": "382bddbb0454a8945a36a082ae14c35afe12426103e2c9b60cd582bf6b18d496",
+  "ffmpeg_fix_ancestry": [
+    {
+      "cve": "CVE-2026-8461",
+      "fix": "c23d4da3128c279b714b282e6ec292e8755007e3",
+      "comparison": {
+        "ahead": 3264,
+        "base": "c23d4da3128c279b714b282e6ec292e8755007e3",
+        "behind": 0,
+        "merge_base": "c23d4da3128c279b714b282e6ec292e8755007e3",
+        "status": "ahead"
+      },
+      "error": null
+    },
+    {
+      "cve": "CVE-2026-8461",
+      "fix": "5806e8b9f34f1b0663b3017ef9dd1aa5d08116d1",
+      "comparison": {
+        "ahead": 3265,
+        "base": "5806e8b9f34f1b0663b3017ef9dd1aa5d08116d1",
+        "behind": 0,
+        "merge_base": "5806e8b9f34f1b0663b3017ef9dd1aa5d08116d1",
+        "status": "ahead"
+      },
+      "error": null
+    },
+    {
+      "cve": "CVE-2026-8461",
+      "fix": "374b726ffa878ee1cadb987bd1e1e20cc7ed8845",
+      "comparison": {
+        "ahead": 3266,
+        "base": "374b726ffa878ee1cadb987bd1e1e20cc7ed8845",
+        "behind": 0,
+        "merge_base": "374b726ffa878ee1cadb987bd1e1e20cc7ed8845",
+        "status": "ahead"
+      },
+      "error": null
+    },
+    {
+      "cve": "CVE-2026-12706",
+      "fix": "2f60af465ad78ae4be85e0bbde4067846d80b582",
+      "comparison": {
+        "ahead": 3562,
+        "base": "2f60af465ad78ae4be85e0bbde4067846d80b582",
+        "behind": 0,
+        "merge_base": "2f60af465ad78ae4be85e0bbde4067846d80b582",
+        "status": "ahead"
+      },
+      "error": null
+    },
+    {
+      "cve": "CVE-2026-30997",
+      "fix": "1a2c16fe514b60e1860829c42ce199de77a007e5",
+      "comparison": {
+        "ahead": 3514,
+        "base": "1a2c16fe514b60e1860829c42ce199de77a007e5",
+        "behind": 0,
+        "merge_base": "1a2c16fe514b60e1860829c42ce199de77a007e5",
+        "status": "ahead"
+      },
+      "error": null
+    },
+    {
+      "cve": "CVE-2026-30998",
+      "fix": "18b83f2d0a0f9bcbafb0001a2911327c4b8df056",
+      "comparison": {
+        "ahead": 3399,
+        "base": "18b83f2d0a0f9bcbafb0001a2911327c4b8df056",
+        "behind": 0,
+        "merge_base": "18b83f2d0a0f9bcbafb0001a2911327c4b8df056",
+        "status": "ahead"
+      },
+      "error": null
+    },
+    {
+      "cve": "CVE-2026-30999",
+      "fix": "144af8f81abc1385631b4e1f4672cd415a9c6e05",
+      "comparison": {
+        "ahead": 3400,
+        "base": "144af8f81abc1385631b4e1f4672cd415a9c6e05",
+        "behind": 0,
+        "merge_base": "144af8f81abc1385631b4e1f4672cd415a9c6e05",
+        "status": "ahead"
+      },
+      "error": null
+    },
+    {
+      "cve": "CVE-2026-66038",
+      "fix": "7c0b8c8594501dd904ebbb3b45bb3f6e2c745b7d",
+      "comparison": {
+        "ahead": 2587,
+        "base": "7c0b8c8594501dd904ebbb3b45bb3f6e2c745b7d",
+        "behind": 73,
+        "merge_base": "47e9d68e203fc5e1ecec0607f39ecfcecce14296",
+        "status": "diverged"
+      },
+      "error": null
+    },
+    {
+      "cve": "CVE-2026-66038",
+      "fix": "e7cbfd1c507b57a806a5825b87d609963e862c8c",
+      "comparison": {
+        "ahead": 2431,
+        "base": "e7cbfd1c507b57a806a5825b87d609963e862c8c",
+        "behind": 0,
+        "merge_base": "e7cbfd1c507b57a806a5825b87d609963e862c8c",
+        "status": "ahead"
+      },
+      "error": null
+    },
+    {
+      "cve": "CVE-2026-70629",
+      "fix": "a5fe21a1a410a680fe93c33b0dd696b7e1c3aea4",
+      "comparison": {
+        "ahead": 2587,
+        "base": "a5fe21a1a410a680fe93c33b0dd696b7e1c3aea4",
+        "behind": 130,
+        "merge_base": "47e9d68e203fc5e1ecec0607f39ecfcecce14296",
+        "status": "diverged"
+      },
+      "error": null
+    },
+    {
+      "cve": "CVE-2026-70629",
+      "fix": "cd1f545cf27ba08f6f5b31b1e92665d7874d4fd7",
+      "comparison": {
+        "ahead": 2042,
+        "base": "cd1f545cf27ba08f6f5b31b1e92665d7874d4fd7",
+        "behind": 0,
+        "merge_base": "cd1f545cf27ba08f6f5b31b1e92665d7874d4fd7",
+        "status": "ahead"
+      },
+      "error": null
+    },
+    {
+      "cve": "CVE-2026-70631",
+      "fix": "3c287af3affe1286350faa69c02bcc5d49de18bb",
+      "comparison": {
+        "ahead": 2587,
+        "base": "3c287af3affe1286350faa69c02bcc5d49de18bb",
+        "behind": 160,
+        "merge_base": "47e9d68e203fc5e1ecec0607f39ecfcecce14296",
+        "status": "diverged"
+      },
+      "error": null
+    },
+    {
+      "cve": "CVE-2026-70631",
+      "fix": "2f234ea34c81288e3840fca632dd16481d8de39f",
+      "comparison": {
+        "ahead": 2040,
+        "base": "2f234ea34c81288e3840fca632dd16481d8de39f",
+        "behind": 0,
+        "merge_base": "2f234ea34c81288e3840fca632dd16481d8de39f",
+        "status": "ahead"
+      },
+      "error": null
+    }
+  ],
+  "mpv_ipc_source_url": "https://github.com/mpv-player/mpv/blob/e471496c56/input/ipc-win.c",
+  "mpv_ipc_source_sha256": "92a9b0f883f1c1f93e7918e8d99ab48f20baccfa2b2f61f5cd0df35646909bb2"
+}
