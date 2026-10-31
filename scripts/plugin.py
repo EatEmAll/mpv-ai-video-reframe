@@ -1,4 +1,4 @@
-"""Install/uninstall the user script or build a portable source archive."""
+"""Set up or uninstall the extension, or build a portable source archive."""
 
 import argparse
 import base64
@@ -6,6 +6,7 @@ import contextlib
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import zipfile
@@ -15,8 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # Also usable as a direct setup script before the project is installed.
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
-from windows_preflight import probe, supported_backend  # noqa: E402
+from windows_preflight import inspect_backend, supported_backend  # noqa: E402
 
+from reframe.runtime import find_mpv  # noqa: E402
 from reframe.security import (  # noqa: E402
     SecurityError,
     strict_json,
@@ -215,9 +217,10 @@ def _install(root, config):
         raise ValueError(f"Refusing to overwrite unowned or edited script: {script}")
     script.parent.mkdir(parents=True, exist_ok=True)
     conf.parent.mkdir(parents=True, exist_ok=True)
-    if script.exists():
-        backup(script)
     source = (root / "mpv/reframe.lua").read_bytes()
+    # A repeat install must not spend the single backup on identical content.
+    if script.exists() and script.read_bytes() != source:
+        backup(script)
     changes = {"scripts/reframe.lua": source}
     files = {"scripts/reframe.lua": hashlib.sha256(source).hexdigest()}
     previous_config = previous["files"].get("script-opts/reframe.conf")
@@ -239,6 +242,26 @@ def _install(root, config):
         if not destination.is_file() or destination.stat().st_size == 0:
             raise RuntimeError(f"Install verification failed: {destination}")
     return [str(script), str(conf)]
+
+
+def setup(root, config, accel=False):
+    """Prepare the locked environment and weights, then install. Safe to repeat."""
+    root = root.absolute()
+    # Check before uv even queries an editable interpreter (Python 3.12 site crash).
+    supported_backend(root)
+    environment = os.environ.get("UV_PROJECT_ENVIRONMENT")
+    if environment and Path(environment).absolute() != root / ".venv":
+        raise ValueError("Clear UV_PROJECT_ENVIRONMENT: setup prepares .venv only")
+    find_mpv()
+    sync = ["uv", "sync", "--locked", "--python", "3.12"]
+    subprocess.run(sync + ["--group", "accel"] * accel, cwd=root, check=True)
+    python = [inspect_backend(root), "-X", "utf8"]
+    subprocess.run(python + ["-m", "reframe", "doctor"], cwd=root, check=True)
+    # The exporter refuses to replace an engine; an outdated one is ignored at runtime.
+    if accel and not (root / "models/yolo26n.engine").exists():
+        command = python + ["scripts/export_fp32_engine.py"]
+        subprocess.run(command, cwd=root, check=True)
+    return install(root, config)
 
 
 def uninstall(config):
@@ -325,20 +348,32 @@ def package(output):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("command", choices=("install", "uninstall", "package"))
+    p.add_argument("command", choices=("setup", "install", "uninstall", "package"))
     p.add_argument("--backend-dir", type=Path, default=ROOT)
     p.add_argument("--config-dir", type=Path)
     p.add_argument("--output", type=Path)
+    p.add_argument(
+        "--accel", action="store_true", help="setup: also build a TensorRT engine"
+    )
     args = p.parse_args()
     if args.command == "package":
         if args.output is None:
             p.error("package requires --output")
         result = package(args.output)
+    elif args.command == "setup":
+        try:
+            result = setup(
+                args.backend_dir, args.config_dir or config_dir(), args.accel
+            )
+        except (ValueError, RuntimeError, OSError) as error:
+            p.error(str(error))
+        except subprocess.CalledProcessError as error:
+            p.error(f"Setup step failed: {' '.join(map(str, error.cmd))}")
     else:
         config = args.config_dir or config_dir()
         if args.command == "install":
             try:
-                probe(args.backend_dir)
+                inspect_backend(args.backend_dir)
             except (ValueError, RuntimeError, OSError) as error:
                 p.error(str(error))
         result = (

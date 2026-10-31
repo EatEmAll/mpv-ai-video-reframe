@@ -1,6 +1,6 @@
 {
-  "lock_sha256_lf": "5a105e990aa97d00725b28dea4aa7c4be0ba051b01326d73a2c68f929f200fa4",
-  "queried_at": "2026-10-30T17:56:46.371184+00:00",
+  "lock_sha256_lf": "b264efe01f539b1304efb666712b9f73fc1b16126875bf65f0bd8c46a3e65732",
+  "queried_at": "2026-10-31T19:43:09.790493+00:00",
   "source": "https://api.osv.dev/v1/querybatch",
   "scope": "all locked registry packages; CUDA local version suffix normalized",
   "packages": [

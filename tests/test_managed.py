@@ -91,6 +91,82 @@ def test_installer_preserves_user_files_and_modified_config(tmp_path):
     assert not (config / "scripts/reframe.lua").exists()
 
 
+def test_repeat_install_keeps_backup_for_a_real_upgrade(tmp_path):
+    root = tmp_path / "backend"
+    for relative in (
+        "pyproject.toml",
+        "src/reframe/__main__.py",
+        "mpv/reframe.lua",
+        ".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python",
+    ):
+        p = root / relative
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("first")
+    (root / "mpv/reframe.conf.example").write_text("backend_dir=\n")
+    config = tmp_path / "config"
+    config.mkdir()
+    previous = config / "scripts/reframe.lua.previous"
+    plugin.install(root, config)
+    plugin.install(root, config)
+    assert not previous.exists()
+    (root / "mpv/reframe.lua").write_text("second")
+    plugin.install(root, config)
+    assert previous.read_text() == "first"
+    assert (config / "scripts/reframe.lua").read_text() == "second"
+
+
+def test_setup_prepares_then_installs_in_order(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.delenv("UV_PROJECT_ENVIRONMENT", raising=False)
+    monkeypatch.setattr(plugin, "find_mpv", lambda: calls.append("mpv"))
+    monkeypatch.setattr(
+        plugin.subprocess,
+        "run",
+        lambda command, **kwargs: calls.append(command[-1]) or kwargs["check"] and None,
+    )
+    monkeypatch.setattr(plugin, "inspect_backend", lambda root: "python")
+    monkeypatch.setattr(
+        plugin, "install", lambda root, config: calls.append("install") or []
+    )
+    assert plugin.setup(tmp_path, tmp_path / "config") == []
+    assert calls == ["mpv", "3.12", "doctor", "install"]
+    calls.clear()
+    assert plugin.setup(tmp_path, tmp_path / "config", accel=True) == []
+    assert calls == [
+        "mpv",
+        "accel",
+        "doctor",
+        "scripts/export_fp32_engine.py",
+        "install",
+    ]
+    calls.clear()
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models/yolo26n.engine").write_text("built")
+    assert plugin.setup(tmp_path, tmp_path / "config", accel=True) == []
+    assert calls == ["mpv", "accel", "doctor", "install"]
+
+
+def test_setup_stops_before_downloads_without_mpv(tmp_path, monkeypatch):
+    monkeypatch.delenv("UV_PROJECT_ENVIRONMENT", raising=False)
+
+    def missing():
+        raise FileNotFoundError("Install mpv")
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("uv must not run")
+
+    monkeypatch.setattr(plugin, "find_mpv", missing)
+    monkeypatch.setattr(plugin.subprocess, "run", unexpected)
+    with pytest.raises(FileNotFoundError, match="Install mpv"):
+        plugin.setup(tmp_path, tmp_path / "config")
+
+
+def test_setup_rejects_foreign_uv_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", str(tmp_path / "other"))
+    with pytest.raises(ValueError, match="UV_PROJECT_ENVIRONMENT"):
+        plugin.setup(tmp_path, tmp_path / "config")
+
+
 def test_installer_rejects_unowned_script(tmp_path):
     # Exercise guard against replacing a user's script using the prepared repository.
     script = tmp_path / "scripts/reframe.lua"

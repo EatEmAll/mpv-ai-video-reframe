@@ -6,9 +6,7 @@ macOS/MPS remains unverified. Measured results are at the end of this file.
 ## Setup
 
 ```text
-uv sync --locked
-uv run reframe doctor
-uv run python scripts/plugin.py install
+uv run --no-project scripts/plugin.py setup
 ```
 
 `requires-python` excludes 3.14, so on distributions shipping it uv selects its
@@ -16,8 +14,8 @@ own managed Python. Its virtual environment reaches the interpreter through a
 linked version directory; `trusted_executable` follows such links only when each
 link and its parent are trusted. There is no ASCII path requirement on Linux.
 
-The installer's inference preflight must pass before it writes configuration.
-`scripts/windows_preflight.py --cpu` runs the same probe manually despite its name.
+Setup runs no inference. `scripts/windows_preflight.py --cpu` runs a test detection
+manually despite its name.
 
 `input-ipc-server` is reused only when it is an absolute path inside a private
 `0700` directory. mpv creates the socket `0600`. A socket directly in `/tmp` is

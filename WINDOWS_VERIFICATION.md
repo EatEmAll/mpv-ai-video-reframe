@@ -45,9 +45,9 @@ powershell -NoProfile -File scripts/setup_windows.ps1 -Accel
 The setup script checks its location before asking uv to inspect the environment,
 runs locked sync and explicit model preparation, then runs real detector inference
 in a bounded child process. A native abort becomes an actionable preflight error.
-`doctor` alone is not an inference test. The installer CLI repeats inference
-preflight before changing a config directory; unsupported Unicode backends fail
-before writing configuration. No model download happens during player startup.
+`doctor` alone is not an inference test. The installer checks paths but runs no
+inference; unsupported Unicode backends fail before writing configuration. No model
+download happens during player startup.
 
 After successful setup, explicitly select your mpv config directory:
 
@@ -64,7 +64,7 @@ inference and remains usable when a dependency is broken.
 
 ```powershell
 uv sync --locked --group dev --group accel
-.venv\Scripts\python.exe scripts/export_windows_engine.py
+.venv\Scripts\python.exe scripts/export_fp32_engine.py
 .venv\Scripts\python.exe scripts/windows_preflight.py --model models/yolo26n.engine
 ```
 

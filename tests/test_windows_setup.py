@@ -55,7 +55,7 @@ def test_failed_precision_finalization_leaves_engine_unselectable(
     import json
     from types import SimpleNamespace
 
-    import export_windows_engine
+    import export_fp32_engine
     import plugin
     import windows_preflight
 
@@ -91,7 +91,7 @@ def test_failed_precision_finalization_leaves_engine_unselectable(
     )
     monkeypatch.setattr(sys, "argv", ["export", "--model", str(weights)])
     with pytest.raises(OSError, match="simulated"):
-        export_windows_engine.main()
+        export_fp32_engine.main()
     assert engine.is_file()
     assert not manifest.exists()
     assert not models.compatible_engine(engine, weights, (8, 6), "11.2.1.2")
