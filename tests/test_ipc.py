@@ -1,5 +1,5 @@
 from collections import deque
-from threading import Lock
+from threading import Event, Lock
 
 import pytest
 
@@ -16,6 +16,7 @@ class FakeMPV:
 
 def test_only_one_inflight_and_retry_latest():
     ipc = IPC.__new__(IPC)
+    ipc.changed = Event()
     ipc.lock = Lock()
     ipc.generation = 0
     ipc.inflight = False
@@ -30,6 +31,7 @@ def test_only_one_inflight_and_retry_latest():
     assert not ipc.set_align(0.7)
     assert len(ipc.mpv.pending) == 1
     ipc.mpv.pending[0][1](None, None)
+    assert ipc.changed.is_set()
     assert ipc.set_align(0.7)
     ipc.mpv.pending[1][1](None, None)
     assert ipc.last_align == 0.7
@@ -43,6 +45,7 @@ def test_forced_refresh_still_obeys_the_playback_frame_ceiling(monkeypatch):
     wall = [10.0]
     monkeypatch.setattr(module.time, "perf_counter", lambda: wall[0])
     ipc = IPC.__new__(IPC)
+    ipc.changed = Event()
     ipc.lock = Lock()
     ipc.generation = 0
     ipc.inflight = False
@@ -64,6 +67,7 @@ def test_forced_refresh_still_obeys_the_playback_frame_ceiling(monkeypatch):
 
 def test_old_generation_completion_does_not_set_new_alignment():
     ipc = IPC.__new__(IPC)
+    ipc.changed = Event()
     ipc.lock = Lock()
     ipc.generation = 0
     ipc.inflight = False

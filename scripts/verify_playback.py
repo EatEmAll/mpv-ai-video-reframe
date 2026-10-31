@@ -24,6 +24,7 @@ from reframe.evaluation import score, score_identity
 def observe_clip(clip, speed, directory, detector=None):
     directory.mkdir(parents=True, exist_ok=True)
     rows = []
+    pan_events = []
     errors = []
     stop = threading.Event()
     thread = None
@@ -37,6 +38,17 @@ def observe_clip(clip, speed, directory, detector=None):
     def observed(name, value):
         with lock:
             cache[name] = value
+            if name == "video-align-x":
+                # Independent property notification receipt, not proof of a
+                # physical display presentation. Keep every pan, rather than
+                # aliasing it through the 30 Hz geometry sampling below.
+                pan_events.append(
+                    {
+                        "monotonic": time.perf_counter(),
+                        "align": value,
+                        "time_pos": cache.get("time-pos"),
+                    }
+                )
 
     with player_for(clip, pause=True, **player_options(detector)) as (player, name):
         player.command("set_property", "geometry", "608x1080")
@@ -58,6 +70,9 @@ def observe_clip(clip, speed, directory, detector=None):
             "video-timing-offset",
             "hwdec-current",
             "display-fps",
+            "estimated-display-fps",
+            "vsync-jitter",
+            "mistimed-frame-count",
         ]:
             player.bind_property_observer(prop, observed)
         if detector:
@@ -103,6 +118,7 @@ def observe_clip(clip, speed, directory, detector=None):
                     rows.append(
                         {
                             "wall": time.time(),
+                            "monotonic": time.perf_counter(),
                             "time_pos": t,
                             "speed": speed,
                             "w": dims["w"],
@@ -115,6 +131,9 @@ def observe_clip(clip, speed, directory, detector=None):
                             "video_timing_offset": data.get("video-timing-offset"),
                             "hwdec": data.get("hwdec-current"),
                             "display_fps": data.get("display-fps"),
+                            "estimated_display_fps": data.get("estimated-display-fps"),
+                            "vsync_jitter": data.get("vsync-jitter"),
+                            "mistimed_frames": data.get("mistimed-frame-count"),
                         }
                     )
                 next_sample += 1 / 30
@@ -150,6 +169,9 @@ def observe_clip(clip, speed, directory, detector=None):
             writer.writeheader()
             writer.writerows(rows)
     (directory / "errors.json").write_text(json.dumps(errors), encoding="utf-8")
+    (directory / "pan-events.jsonl").write_text(
+        "".join(json.dumps(event) + "\n" for event in pan_events), encoding="utf-8"
+    )
     return rows, errors, resources
 
 

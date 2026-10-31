@@ -171,6 +171,7 @@ class IPC:
         def done(error, result):
             with self.lock:
                 self.inflight = False
+                self.changed.set()
                 if generation != self.generation:
                     return
                 if error is None:

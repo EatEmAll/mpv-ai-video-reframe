@@ -75,9 +75,9 @@ def main():
             player.command("seek", 10, "absolute+exact")
             time.sleep(0.5)
             player.command("set_property", "pause", False)
-            started = time.time()
+            started = time.perf_counter()
             time.sleep(3)
-            ended = time.time()
+            ended = time.perf_counter()
             player.command("set_property", "pause", True)
             cadence.append(
                 {
@@ -106,10 +106,10 @@ def main():
             observed = [
                 r
                 for r in rows
-                if case["start"] + 0.2 < r["wall"] < case["end"]
+                if case["start"] + 0.2 < r["monotonic"] < case["end"]
                 and r["speed"] == case["speed"]
             ]
-            sent = [r["wall"] for r in observed if r["sent"]]
+            sent = [r["pan_sent_at"] for r in observed if r["sent"]]
             gaps = [b - a for a, b in zip(sent, sent[1:])]
             ceiling = min(case["display_fps"] or 60, case["fps"] * case["speed"])
             case.update(

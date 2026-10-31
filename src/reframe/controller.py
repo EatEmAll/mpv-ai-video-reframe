@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from queue import Empty
 
-from .clock import PlaybackClock
+from .clock import PlaybackClock, PresentationClock
 from .decoder import Worker
 from .framing import box_at, contain_center
 from .geometry import align_for_center
@@ -45,12 +45,14 @@ def run(
     )
     last_key = None
     clock = PlaybackClock()
+    presentation = PresentationClock()
     next_tick = time.perf_counter()
     cadence = 60.0
     suspended = False
     resume_epoch = 0
     validated_path = None
     validated_source = None
+    arrivals = 0
     try:
         directory.mkdir(parents=True, exist_ok=True)
         with Telemetry(directory / "telemetry.jsonl") as log, frame_timer():
@@ -61,7 +63,9 @@ def run(
             ):
                 now = time.perf_counter()
                 if now < next_tick:
-                    ipc.closed.wait(next_tick - now)
+                    # Property changes and crop acknowledgements can make a
+                    # blocked output ready before its retry deadline.
+                    ipc.changed.wait(min(0.02, next_tick - now))
                 now = time.perf_counter()
                 if managed:
                     managed.progress = now
@@ -156,6 +160,7 @@ def run(
                     planner = Planner()
                     motion = CameraMotion()
                     last_key = None
+                    arrivals = 0
                 worker.update(path, generation, t, state.get("speed") or 1, rotation)
                 while True:
                     try:
@@ -170,6 +175,7 @@ def run(
                         for sample in timeline.samples[count:]:
                             planner.add(sample[0], sample[1])
                         continue
+                    arrivals += 1
                     if resync:
                         timeline = Timeline()
                         planner = Planner()
@@ -187,6 +193,9 @@ def run(
                                 and abs(new_sample[1] - previous_x) > 0.25,
                             )
                 timeline.prune(t)
+                # Queue draining/planning must not date this camera step with
+                # the timestamp from before detector results were consumed.
+                now = time.perf_counter()
                 media_t = clock.query(
                     t,
                     now,
@@ -208,12 +217,16 @@ def run(
                 if key == last_key:
                     continue
                 if now < ipc.last_sent + 1 / cadence:
+                    next_tick = ipc.last_sent + 1 / cadence
                     continue
                 fps = state.get("display-fps") or 60
-                query_t = media_t + (
-                    0
-                    if state.get("pause")
-                    else (state.get("speed") or 1) * (2 / fps + ipc.latency_seconds)
+                query_t = presentation.query(
+                    media_t,
+                    now,
+                    lead=(state.get("speed") or 1) * (2 / fps + ipc.latency_seconds),
+                    speed=state.get("speed") or 1,
+                    paused=bool(state.get("pause")),
+                    generation=generation,
                 )
                 preview = timeline.preview()
                 if not timeline.samples and preview is None:
@@ -239,9 +252,10 @@ def run(
                 tolerance = min(0.002, 0.5 / max(1, scaled - w))
                 force = abs(align - (state.get("video-align-x") or 0)) > tolerance
                 before_sent = ipc.sent_count
-                if ipc.set_align(
+                accepted = ipc.set_align(
                     align, force=force, min_interval=1 / cadence, tolerance=tolerance
-                ):
+                )
+                if accepted:
                     last_key = key
                 sample = (
                     min(timeline.samples, key=lambda s: abs(s[0] - t))
@@ -250,9 +264,16 @@ def run(
                 )
                 record = {
                     "wall": time.time(),
+                    "monotonic": time.perf_counter(),
+                    "pan_sent_at": ipc.last_sent
+                    if ipc.sent_count > before_sent
+                    else None,
+                    "query_time": query_t,
+                    "detector_arrivals": arrivals,
                     "time_pos": t,
                     "camera_time": media_t,
                     "speed": state.get("speed"),
+                    "paused": bool(state.get("pause")),
                     "x_smooth": x,
                     "x_target": target,
                     "camera_velocity": motion.velocity,
@@ -261,6 +282,7 @@ def run(
                     "x_raw": sample[1] if sample else None,
                     "align": align,
                     "sent": ipc.sent_count > before_sent,
+                    "pan_blocked": not accepted,
                     "align_applied": state.get("video-align-x"),
                     "rotation": rotation,
                     "detector_model": str(getattr(detector, "model_path", "unknown")),
@@ -284,12 +306,18 @@ def run(
                     **worker.stats,
                 }
                 log.write(record)
+                arrivals = 0
                 if ipc.sent_count > before_sent:
                     next_tick = ipc.last_sent + 1 / cadence
-                else:
+                elif accepted:
                     # Stable/subpixel targets still need only one HUD/log update
                     # per output frame, not four retries per frame.
                     next_tick = time.perf_counter() + 1 / cadence
+                else:
+                    # A late acknowledgement is not a stable/subpixel target.
+                    # Sleeping a whole frame here doubled pan intervals when
+                    # replies arrived just after the nominal frame deadline.
+                    next_tick = time.perf_counter() + min(0.02, 1 / (cadence * 4))
                 if debug_osd:
                     ipc.mpv.command_async(
                         "osd-overlay",
