@@ -151,11 +151,12 @@ has no footage-upload operation. See the
 [network and privacy audit](SECURITY_REVIEW.md#outbound-traffic-privacy-and-logs)
 for dependency limits. Session status is available in `user-data/reframe`;
 local lifecycle and camera logs are under `<backend_dir>/runs/lua/<session-id>/`.
-A persistent `Reframe: OFF / STARTING / ON / SUSPENDED / ERROR` badge appears at
+A `Reframe: OFF / STARTING / ON / SUSPENDED / ERROR` badge appears for five seconds
+after each status change at
 the lower left, about 100 pixels above the bottom, above the stock OSC. It uses
 this script's ASS overlay and leaves the stock controls intact. Loading/ready,
 waiting and stopping have distinct suffixes; requested enable alone never shows
-ON. The badge updates on lifecycle, configuration and OSD geometry changes.
+ON. The badge updates on lifecycle, configuration and OSD geometry changes while visible.
 Set `status_indicator=no` in `script-opts/reframe.conf` to hide it. An absent badge
 can mean the extension was never loaded: verify that the selected mpv config
 contains `scripts/reframe.lua` and `script-opts/reframe.conf`, or explicitly load

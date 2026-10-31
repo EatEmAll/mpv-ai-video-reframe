@@ -15,8 +15,9 @@ local function show(text) mp.osd_message('Reframe: '..text, 3) end
 -- Render only on state/options/geometry changes, never at video frame rate.
 local indicator = mp.create_osd_overlay('ass-events')
 local indicator_state = 'disabled'
+local indicator_visible, indicator_timer = false, nil
 local function render_indicator()
-    if not o.status_indicator then indicator:remove(); return end
+    if not o.status_indicator or not indicator_visible then indicator:remove(); return end
     local dim = mp.get_property_native('osd-dimensions') or {}
     local w, h = tonumber(dim.w) or 1280, tonumber(dim.h) or 720
     if w <= 0 or h <= 0 then indicator:remove(); return end
@@ -34,7 +35,16 @@ end
 options.read_options(o, 'reframe', render_indicator)
 local function publish(s, state, reason)
     if s then s.state, s.reason = state, reason or '' end
+    local changed = not indicator_timer or indicator_state ~= state
     indicator_state = state
+    if changed then
+        if indicator_timer then indicator_timer:kill() end
+        indicator_visible = true
+        indicator_timer = mp.add_timeout(5, function()
+            indicator_visible = false
+            indicator:remove()
+        end)
+    end
     render_indicator()
     mp.set_property_native('user-data/reframe', {state=state, reason=reason or '',
         session=s and s.id or '', log_dir=s and s.output or ''})
