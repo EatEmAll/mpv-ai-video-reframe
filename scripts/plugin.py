@@ -253,7 +253,8 @@ def setup(root, config, accel=False):
     if environment and Path(environment).absolute() != root / ".venv":
         raise ValueError("Clear UV_PROJECT_ENVIRONMENT: setup prepares .venv only")
     find_mpv()
-    sync = ["uv", "sync", "--locked", "--python", "3.12"]
+    # Compile once here so the first playback after setup skips it.
+    sync = ["uv", "sync", "--locked", "--compile-bytecode", "--python", "3.12"]
     subprocess.run(sync + ["--group", "accel"] * accel, cwd=root, check=True)
     python = [inspect_backend(root), "-X", "utf8"]
     subprocess.run(python + ["-m", "reframe", "doctor"], cwd=root, check=True)

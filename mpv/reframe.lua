@@ -16,6 +16,8 @@ local function show(text) mp.osd_message('Reframe: '..text, 3) end
 local indicator = mp.create_osd_overlay('ass-events')
 local indicator_state = 'disabled'
 local indicator_visible, indicator_timer = false, nil
+-- Model loading can outlast the five second badge; keep showing progress.
+local indicator_pending = {starting=true, loading=true, ready=true}
 local function render_indicator()
     if not o.status_indicator or not indicator_visible then indicator:remove(); return end
     local dim = mp.get_property_native('osd-dimensions') or {}
@@ -41,6 +43,7 @@ local function publish(s, state, reason)
         if indicator_timer then indicator_timer:kill() end
         indicator_visible = true
         indicator_timer = mp.add_timeout(5, function()
+            if indicator_pending[indicator_state] then return end
             indicator_visible = false
             indicator:remove()
         end)

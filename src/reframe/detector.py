@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from threading import Event, Thread
 from types import SimpleNamespace
 
 
@@ -84,3 +85,40 @@ class Detector:
                 Det(int(i), tuple(float(v) for v in box), float(c), appearance)
             )
         return detections
+
+
+class DetectorLoader:
+    """Build a Detector on a background thread.
+
+    torch/Ultralytics imports, CUDA setup and warmup take seconds (much longer
+    on a cold disk), so start them while waiting for a video.
+    """
+
+    def __init__(self, model_path=None, factory=Detector):
+        self.done = Event()
+        self.detector = None
+        self.error = None
+        self.thread = Thread(
+            target=self._load,
+            args=(factory, model_path),
+            name="reframe-model-load",
+            daemon=True,
+        )
+        self.thread.start()
+
+    def _load(self, factory, model_path):
+        try:
+            self.detector = factory(model_path)
+        except BaseException as error:
+            self.error = error
+        finally:
+            self.done.set()
+
+    def result(self, stop=None):
+        """Wait for the detector; return None if `stop` is set first."""
+        while not self.done.wait(0.1):
+            if stop is not None and stop.is_set():
+                return None
+        if self.error is not None:
+            raise self.error
+        return self.detector

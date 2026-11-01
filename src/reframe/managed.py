@@ -224,8 +224,19 @@ def run_managed(args):
         from .ipc import IPC
 
         ipc = IPC(args.pipe, managed=session)
+        model = Path(args.model or "models/yolo26n.pt")
+        if not model.is_file():
+            raise FileNotFoundError(
+                f"Model missing: {model}. Prepare weights using reframe doctor first."
+            )
+        from .detector import DetectorLoader
+
+        # Load while the user picks a video; usually ready before one arrives.
+        loader = DetectorLoader(args.model)
         session.state("waiting")
         while not session.stop.wait(0.1):
+            if loader.error is not None:
+                break  # report load failures without waiting for a video
             state, _ = ipc.snapshot()
             path = state.get("path")
             path = (
@@ -239,16 +250,10 @@ def run_managed(args):
                 break
         if session.stop.is_set():
             return
-        model = Path(args.model or "models/yolo26n.pt")
-        if not model.is_file():
-            raise FileNotFoundError(
-                f"Model missing: {model}. Prepare weights using reframe doctor first."
-            )
-        session.state("loading")
-        from .detector import Detector
-
-        detector = Detector(args.model)
-        if session.stop.is_set():
+        if not loader.done.is_set():
+            session.state("loading")
+        detector = loader.result(session.stop)
+        if detector is None or session.stop.is_set():
             return
         session.send(
             "state",
