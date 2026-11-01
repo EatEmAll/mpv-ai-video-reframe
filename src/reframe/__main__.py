@@ -45,6 +45,23 @@ def doctor(mpv_path=None):
     return 0 if report["class_0"] == "person" and len(report["codecs"]) == 2 else 1
 
 
+def _fraction(low, high, inclusive_low):
+    def parse(text):
+        try:
+            value = float(text)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"not a number: {text}") from None
+        above = value >= low if inclusive_low else value > low
+        if not (above and value <= high):
+            bracket = "[" if inclusive_low else "("
+            raise argparse.ArgumentTypeError(
+                f"must be within {bracket}{low}, {high}]: {text}"
+            )
+        return value
+
+    return parse
+
+
 def main():
     parser = argparse.ArgumentParser(description="AI person-following mpv companion")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -62,6 +79,24 @@ def main():
         cmd.add_argument("--" + option)
     cmd.add_argument("--rate", type=int, choices=range(5, 16), default=10)
     cmd.add_argument("--debug-osd", action="store_true")
+    cmd.add_argument(
+        "--mode",
+        choices=("follow", "group"),
+        default="follow",
+        help="Initial framing mode; the Lua mode key switches it at runtime",
+    )
+    cmd.add_argument(
+        "--group-conf-floor",
+        type=_fraction(0, 1, inclusive_low=True),
+        default=0.5,
+        help="Group mode: minimum detection confidence, 0-1",
+    )
+    cmd.add_argument(
+        "--group-coverage-floor",
+        type=_fraction(0, 1, inclusive_low=False),
+        default=0.7,
+        help="Group mode: minimum visible fraction of a framed person's box, >0-1",
+    )
     cmd.add_argument(
         "--model",
         help="Explicit model path; otherwise prefer a compatible verified TensorRT engine",

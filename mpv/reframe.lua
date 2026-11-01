@@ -3,7 +3,10 @@ local mp = require 'mp'
 local utils = require 'mp.utils'
 local options = require 'mp.options'
 local o = {backend_dir='', python_path='', autostart=false, toggle_key='Ctrl+r',
-           rate=10, model='', debug_osd=false, status_indicator=true}
+           rate=10, model='', debug_osd=false, status_indicator=true,
+           mode='follow', mode_key='Ctrl+g', group_conf_floor=0.5, group_coverage_floor=0.7}
+local modes = {follow=true, group=true}
+local mode = 'follow'
 local windows = package.config:sub(1,1) == '\\'
 local current, counter, endpoint = nil, 0, nil
 local enabled, pending_enable = false, false
@@ -24,6 +27,7 @@ local function render_indicator()
     local labels = {disabled='OFF', starting='STARTING', loading='STARTING (loading)',
         ready='STARTING (ready)', active='ON', waiting='SUSPENDED (waiting)',
         suspended='SUSPENDED', stopping='OFF (stopping)', error='ERROR'}
+    if mode == 'group' then labels.active = 'ON (group)' end
     local colors = {active='80E080', error='8080FF', suspended='80DFFF', waiting='80DFFF'}
     local size = math.max(14, math.min(22, h / 40))
     local x, y = math.floor(math.min(20, w / 20)), math.floor(math.max(8, h - math.max(100, h * .14)))
@@ -33,6 +37,9 @@ local function render_indicator()
     indicator:update()
 end
 options.read_options(o, 'reframe', render_indicator)
+-- The startup mode comes from reframe.conf; the mode key changes it for the
+-- rest of this player session, including later enables.
+if modes[o.mode] then mode = o.mode else mp.msg.warn('Unknown mode '..tostring(o.mode)..'; using follow') end
 local function publish(s, state, reason)
     if s then s.state, s.reason = state, reason or '' end
     local changed = not indicator_timer or indicator_state ~= state
@@ -47,7 +54,7 @@ local function publish(s, state, reason)
     end
     render_indicator()
     mp.set_property_native('user-data/reframe', {state=state, reason=reason or '',
-        session=s and s.id or '', log_dir=s and s.output or ''})
+        session=s and s.id or '', log_dir=s and s.output or '', mode=mode})
 end
 local function control(s, kind, fields)
     s.sent = s.sent + 1
@@ -121,6 +128,8 @@ mp.register_script_message('reframe-backend', function(raw)
     s.received, s.last = d.seq, mp.get_time()
     if d.type == 'hello' then
         s.hello = true
+        -- A mode change between launch and hello was not seen by the backend.
+        if s.mode ~= mode then s.mode = mode; control(s, 'mode', {mode=mode}) end
     elseif d.type == 'heartbeat' then
         if d.stalled and not s.stopping then fail(s, 'Controller stopped responding') end
     elseif d.type == 'state' and not s.stopping then
@@ -157,6 +166,12 @@ start = function()
         return
     end
     if o.rate < 5 or o.rate > 15 or o.rate % 1 ~= 0 then startup_error('rate must be an integer from 5 to 15'); return end
+    if not (o.group_conf_floor >= 0 and o.group_conf_floor <= 1) then
+        startup_error('group_conf_floor must be from 0 to 1'); return
+    end
+    if not (o.group_coverage_floor > 0 and o.group_coverage_floor <= 1) then
+        startup_error('group_coverage_floor must be above 0 and at most 1'); return
+    end
     if not utils.file_info(executable()) then startup_error('Python environment missing; prepare the backend first'); return end
     local function security(command, pipe, harden)
         local args = {executable(), '-I', '-m', 'reframe.security', command,
@@ -194,6 +209,11 @@ start = function()
         '--output-dir', s.output, '--rate', tostring(o.rate)}
     if o.model ~= '' then args[#args+1]='--model'; args[#args+1]=o.model end
     if o.debug_osd then args[#args+1]='--debug-osd' end
+    s.mode = mode
+    for _, v in ipairs({'--mode', mode, '--group-conf-floor', tostring(o.group_conf_floor),
+                        '--group-coverage-floor', tostring(o.group_coverage_floor)}) do
+        args[#args+1] = v
+    end
     s.handle = mp.command_native_async({name='subprocess', args=args, playback_only=false,
         detach=false, capture_stdout=true, capture_stderr=true, capture_size=65536}, function(ok, result, err)
         if current ~= s then return end
@@ -234,6 +254,25 @@ mp.add_periodic_timer(1, function()
     end
 end)
 mp.add_key_binding(o.toggle_key ~= '' and o.toggle_key or nil, 'toggle', toggle)
+-- follow <-> group. Works while stopped too: the choice applies to the next enable.
+local function set_mode(requested)
+    if requested == nil or requested == '' or requested == 'toggle' then
+        requested = mode == 'group' and 'follow' or 'group'
+    end
+    if not modes[requested] then show('Unknown mode '..tostring(requested)..' (use follow, group or toggle)'); return end
+    mode = requested
+    local s = current
+    if s and not s.stopping and s.hello and s.mode ~= mode then
+        s.mode = mode
+        control(s, 'mode', {mode=mode})
+    end
+    local data = mp.get_property_native('user-data/reframe')
+    if type(data) == 'table' then data.mode = mode; mp.set_property_native('user-data/reframe', data) end
+    render_indicator()
+    show(mode..' mode')
+end
+mp.add_key_binding(o.mode_key ~= '' and o.mode_key or nil, 'mode', function() set_mode('toggle') end)
+mp.register_script_message('reframe-mode', set_mode)
 mp.register_script_message('reframe-toggle', toggle)
 mp.register_script_message('reframe-enable', start)
 mp.register_script_message('reframe-stop', function() stop('user') end)

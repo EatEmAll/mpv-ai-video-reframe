@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from threading import Event, Lock, Thread
 
+from .group import MODES
 from .security import (
     private_dir,
     runtime_root,
@@ -81,6 +82,8 @@ class Session:
         self.epoch = 0
         self.progress = time.perf_counter()
         self.phase = "starting"
+        # Read by the controller every tick; replaced atomically by receive().
+        self.mode = getattr(args, "mode", None) or "follow"
         self.last_state = None
         self.thread = None
         self.owner = None
@@ -159,10 +162,18 @@ class Session:
                     or data["view_epoch"] != self.epoch
                 ):
                     return
+            elif kind == "mode":
+                if (
+                    set(data) != {"protocol", "session", "seq", "type", "mode"}
+                    or data.get("mode") not in MODES
+                ):
+                    return
             else:
                 return
             self.received = seq
-            if kind == "stop":
+            if kind == "mode":
+                self.mode = data["mode"]
+            elif kind == "stop":
                 self.stop.set()
                 self.ack.set()
             elif (
@@ -267,6 +278,9 @@ def run_managed(args):
             session.stop,
             args.output_dir,
             ipc=ipc,
+            mode=session.mode,
+            group_conf_floor=getattr(args, "group_conf_floor", 0.5),
+            group_coverage_floor=getattr(args, "group_coverage_floor", 0.7),
         )
     except Exception:
         if session.stop.is_set():

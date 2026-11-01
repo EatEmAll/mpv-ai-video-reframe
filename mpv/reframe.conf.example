@@ -9,3 +9,11 @@ model=
 debug_osd=no
 # Five-second status badge above the stock OSC; does not replace player controls.
 status_indicator=yes
+# Framing mode at startup: follow (one person) or group (fit everyone who fits).
+mode=follow
+# Switches follow/group during playback; empty disables the key.
+mode_key=Ctrl+g
+# Group mode: minimum detection confidence (0-1) for a person to count.
+group_conf_floor=0.5
+# Group mode: minimum fraction of a person's box width kept inside the crop (above 0, up to 1).
+group_coverage_floor=0.7

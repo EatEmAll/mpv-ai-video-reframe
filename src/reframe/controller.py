@@ -10,6 +10,7 @@ from .clock import PlaybackClock, PresentationClock
 from .decoder import Worker
 from .framing import box_at, contain_center
 from .geometry import align_for_center
+from .group import MODES, GroupTimeline, contain_group, framed_at, union
 from .ipc import IPC, ViewChanged
 from .metrics import Telemetry
 from .motion import CameraMotion
@@ -28,14 +29,27 @@ def run(
     stop_event=None,
     output_dir=None,
     ipc=None,
+    mode="follow",
+    group_conf_floor=0.5,
+    group_coverage_floor=0.7,
 ):
+    if mode not in MODES:
+        raise ValueError(f"Unknown framing mode: {mode}")
     ipc = ipc or IPC(pipe)
     managed = ipc.managed
+
+    def new_group():
+        return GroupTimeline(group_conf_floor, group_coverage_floor)
+
     worker = Worker(detector, rate)
     worker.start()
     generation = None
     timeline = Timeline()
     planner = Planner()
+    # Both modes consume every detection so a toggle never re-selects the
+    # follow target or starts group framing from an empty history.
+    group = new_group()
+    group_planner = Planner()
     motion = CameraMotion()
     started = time.perf_counter()
     directory = (
@@ -158,9 +172,12 @@ def run(
                     generation = epoch
                     timeline = Timeline()
                     planner = Planner()
+                    group = new_group()
+                    group_planner = Planner()
                     motion = CameraMotion()
                     last_key = None
                     arrivals = 0
+                visible = dims["w"] / max(1, dims["w"] - dims["ml"] - dims["mr"])
                 worker.update(path, generation, t, state.get("speed") or 1, rotation)
                 while True:
                     try:
@@ -179,6 +196,8 @@ def run(
                     if resync:
                         timeline = Timeline()
                         planner = Planner()
+                        group = new_group()
+                        group_planner = Planner()
                         last_key = None
                     previous_x = timeline.last.center if timeline.last else None
                     sample_count = len(timeline.samples)
@@ -192,7 +211,27 @@ def run(
                                 and previous_x is not None
                                 and abs(new_sample[1] - previous_x) > 0.25,
                             )
+                    # Without a framable group, aim where follow mode would.
+                    if timeline.samples and timeline.samples[-1][0] == ts:
+                        fallback = timeline.samples[-1][1]
+                    else:
+                        early = timeline.preview()
+                        fallback = early[0][1] if early else None
+                    group_previous = group.samples[-1][1] if group.samples else None
+                    group_sample = group.add(
+                        ts, dets, visible, cut=cut, fallback=fallback
+                    )
+                    group_planner.add(
+                        group_sample[0],
+                        group_sample[1],
+                        cut
+                        and group_previous is not None
+                        and abs(group_sample[1] - group_previous) > 0.25,
+                    )
                 timeline.prune(t)
+                group.prune(t)
+                active_mode = getattr(managed, "mode", None) or mode
+                grouped = active_mode == "group" and bool(group.samples)
                 # Queue draining/planning must not date this camera step with
                 # the timestamp from before detector results were consumed.
                 now = time.perf_counter()
@@ -211,6 +250,8 @@ def run(
                     dims["mr"],
                     len(timeline.samples),
                     len(timeline.pending),
+                    len(group.samples),
+                    active_mode,
                     gen,
                     state.get("video-align-x"),
                 )
@@ -229,20 +270,38 @@ def run(
                     generation=generation,
                 )
                 preview = timeline.preview()
-                if not timeline.samples and preview is None:
+                if not timeline.samples and preview is None and not grouped:
                     continue
-                x = planner.query(query_t) if timeline.samples else preview[0][1]
                 w = dims["w"]
                 scaled = w - dims["ml"] - dims["mr"]
-                box = box_at(timeline, media_t)
-                # Keep crop-fill fixed at panscan=1 (set by IPC.enable).
-                # A box wider than the viewport must remain cropped; shrinking
-                # the image would violate the full-height playback requirement.
-                x = contain_center(x, box, w / scaled)
+                # Query both planners every tick: a planner left idle keeps a
+                # stale dead-zone anchor and would offset the first frames
+                # after a mode switch.
+                follow_x = (
+                    planner.query(query_t)
+                    if timeline.samples
+                    else (preview[0][1] if preview else None)
+                )
+                group_x = group_planner.query(query_t) if group.samples else None
+                if grouped:
+                    framed = framed_at(group, media_t)
+                    box = union(framed)
+                    x = contain_group(group_x, framed, w / scaled, group.coverage_floor)
+                    active_planner = group_planner
+                else:
+                    box = box_at(timeline, media_t)
+                    # Keep crop-fill fixed at panscan=1 (set by IPC.enable).
+                    # A box wider than the viewport must remain cropped;
+                    # shrinking the image would violate the full-height
+                    # playback requirement.
+                    x = contain_center(follow_x, box, w / scaled)
+                    active_planner = planner
                 target = x
+                # A mode switch is not a cut: CameraMotion pans to the new
+                # target under its normal speed and acceleration limits.
                 cut = motion.time is not None and any(
                     motion.time < ts <= query_t
-                    for ts, _, is_cut in planner.samples
+                    for ts, _, is_cut in active_planner.samples
                     if is_cut
                 )
                 x = motion.query(target, query_t, snap=cut or bool(state.get("pause")))
@@ -260,8 +319,14 @@ def run(
                 sample = (
                     min(timeline.samples, key=lambda s: abs(s[0] - t))
                     if timeline.samples
-                    else preview[0]
+                    else (preview[0] if preview else None)
                 )
+                group_sample = (
+                    min(group.samples, key=lambda s: abs(s[0] - t))
+                    if group.samples
+                    else None
+                )
+                group_info = group.info.get(group_sample[0], {}) if group_sample else {}
                 record = {
                     "wall": time.time(),
                     "monotonic": time.perf_counter(),
@@ -297,9 +362,23 @@ def run(
                     "target_box": (
                         timeline.boxes.get(sample[0])
                         if timeline.samples
-                        else preview[1]
+                        else (preview[1] if preview else None)
                     ),
-                    "state": sample[3] if sample else "buffering",
+                    "state": (
+                        group_sample[3]
+                        if grouped
+                        else (sample[3] if sample else "buffering")
+                    ),
+                    "mode": active_mode,
+                    "group_ids": list(group_sample[2]) if group_sample else [],
+                    "group_box": group.boxes.get(group_sample[0])
+                    if group_sample
+                    else None,
+                    "group_framed": list(group.framed.get(group_sample[0], ()))
+                    if group_sample
+                    else [],
+                    "group_candidates": group_info.get("candidates", 0),
+                    "group_unframed": list(group_info.get("unframed", ())),
                     "lookahead": timeline.samples[-1][0] - t if timeline.samples else 0,
                     "update_ceiling_hz": cadence,
                     "ipc_latency_ms": ipc.latency_seconds * 1000,

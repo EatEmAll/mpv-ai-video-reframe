@@ -64,6 +64,30 @@ def test_protocol_rejects_bad_stale_and_other_session_messages():
     assert s.stop.is_set()
 
 
+def test_mode_control_switches_framing_mode_and_rejects_bad_values():
+    s = Session.__new__(Session)
+    s.id, s.received, s.epoch, s.mode = "ours", 0, 0, "follow"
+    s.stop, s.ack = Event(), Event()
+
+    def receive(seq, **values):
+        data = dict(protocol=1, session="ours", seq=seq, type="mode")
+        data.update(values)
+        s.receive({"args": ["reframe-control", json.dumps(data)]})
+
+    receive(1, mode="sideways")
+    receive(1, mode=["group"])
+    receive(1, mode="group", extra=True)
+    receive(1)
+    assert s.mode == "follow" and s.received == 0
+    receive(1, mode="group")
+    assert s.mode == "group" and s.received == 1
+    receive(1, mode="follow")  # replayed sequence number
+    assert s.mode == "group"
+    receive(2, mode="follow")
+    assert s.mode == "follow"
+    assert not s.stop.is_set() and not s.ack.is_set()
+
+
 def test_installer_preserves_user_files_and_modified_config(tmp_path):
     root = tmp_path / "backend spaces [test]"
     for relative in (
