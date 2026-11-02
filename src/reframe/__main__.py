@@ -62,6 +62,16 @@ def _fraction(low, high, inclusive_low):
     return parse
 
 
+def _seconds(text):
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a number: {text}") from None
+    if not 0 <= value <= 30:
+        raise argparse.ArgumentTypeError(f"must be within [0, 30] seconds: {text}")
+    return value
+
+
 def main():
     parser = argparse.ArgumentParser(description="AI person-following mpv companion")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -96,6 +106,39 @@ def main():
         type=_fraction(0, 1, inclusive_low=False),
         default=0.7,
         help="Group mode: minimum visible fraction of a framed person's box, >0-1",
+    )
+    cmd.add_argument(
+        "--group-relaxed-floor",
+        type=_fraction(0, 1, inclusive_low=False),
+        default=0.5,
+        help="Group mode: lowest visible fraction accepted to keep a more "
+        "confident person (capped at the coverage floor), >0-1",
+    )
+    cmd.add_argument(
+        "--group-pair-floor",
+        type=_fraction(0, 1, inclusive_low=False),
+        default=0.2,
+        help="Group mode: the same for the two most confident people "
+        "(capped at the relaxed floor), >0-1",
+    )
+    cmd.add_argument(
+        "--group-join",
+        type=_seconds,
+        default=0.3,
+        help="Group mode: seconds a new person must be seen before they count",
+    )
+    cmd.add_argument(
+        "--group-leave",
+        type=_seconds,
+        default=0.7,
+        help="Group mode: seconds a missing person is held at their last box",
+    )
+    cmd.add_argument(
+        "--group-switch",
+        type=_seconds,
+        default=0.6,
+        help="Group mode: seconds a clearly better group must be available "
+        "before the camera moves to it",
     )
     cmd.add_argument(
         "--model",

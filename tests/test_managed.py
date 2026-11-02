@@ -88,6 +88,30 @@ def test_mode_control_switches_framing_mode_and_rejects_bad_values():
     assert not s.stop.is_set() and not s.ack.is_set()
 
 
+def test_debug_control_toggles_the_overlay_and_rejects_bad_values():
+    s = Session.__new__(Session)
+    s.id, s.received, s.epoch, s.debug = "ours", 0, 0, False
+    s.stop, s.ack = Event(), Event()
+
+    def receive(seq, **values):
+        data = dict(protocol=1, session="ours", seq=seq, type="debug")
+        data.update(values)
+        s.receive({"args": ["reframe-control", json.dumps(data)]})
+
+    for bad in ("yes", 1, None, ["on"]):
+        receive(1, enabled=bad)
+    receive(1, enabled=True, extra=True)
+    receive(1)
+    assert s.debug is False and s.received == 0
+    receive(1, enabled=True)
+    assert s.debug is True and s.received == 1
+    receive(1, enabled=False)  # replayed sequence number
+    assert s.debug is True
+    receive(2, enabled=False)
+    assert s.debug is False
+    assert not s.stop.is_set() and not s.ack.is_set()
+
+
 def test_installer_preserves_user_files_and_modified_config(tmp_path):
     root = tmp_path / "backend spaces [test]"
     for relative in (

@@ -38,6 +38,7 @@ class Timeline:
         self.initialized = selection_window <= 0
         self.pending = []
         self.boxes = {}
+        self.confidences = {}
         self.repick_pending = []
 
     def preview(self):
@@ -160,9 +161,14 @@ class Timeline:
             state = "hold" if u == 0 else "lost"
         sample = (t, x, self.target_id, state)
         self.samples.append(sample)
-        self.boxes[t] = chosen.box if chosen else (self.last.box if self.last else None)
+        source = chosen or self.last
+        self.boxes[t] = source.box if source else None
+        self.confidences[t] = source.confidence if source else None
         return sample
 
     def prune(self, playhead):
         self.samples = [s for s in self.samples if s[0] >= playhead - 5]
         self.boxes = {t: b for t, b in self.boxes.items() if t >= playhead - 5}
+        self.confidences = {
+            t: c for t, c in self.confidences.items() if t >= playhead - 5
+        }

@@ -84,6 +84,8 @@ class Session:
         self.phase = "starting"
         # Read by the controller every tick; replaced atomically by receive().
         self.mode = getattr(args, "mode", None) or "follow"
+        # Whether the controller draws the bounding-box overlay; same hand-off.
+        self.debug = bool(getattr(args, "debug_osd", False))
         self.last_state = None
         self.thread = None
         self.owner = None
@@ -168,11 +170,19 @@ class Session:
                     or data.get("mode") not in MODES
                 ):
                     return
+            elif kind == "debug":
+                if (
+                    set(data) != {"protocol", "session", "seq", "type", "enabled"}
+                    or type(data.get("enabled")) is not bool
+                ):
+                    return
             else:
                 return
             self.received = seq
             if kind == "mode":
                 self.mode = data["mode"]
+            elif kind == "debug":
+                self.debug = data["enabled"]
             elif kind == "stop":
                 self.stop.set()
                 self.ack.set()
@@ -281,6 +291,16 @@ def run_managed(args):
             mode=session.mode,
             group_conf_floor=getattr(args, "group_conf_floor", 0.5),
             group_coverage_floor=getattr(args, "group_coverage_floor", 0.7),
+            group_options={
+                key: getattr(args, "group_" + key, default)
+                for key, default in (
+                    ("relaxed_floor", 0.5),
+                    ("pair_floor", 0.2),
+                    ("join", 0.3),
+                    ("leave", 0.7),
+                    ("switch", 0.6),
+                )
+            },
         )
     except Exception:
         if session.stop.is_set():

@@ -109,6 +109,8 @@ local ok,err=pcall(function()
         end
         assert(arg('--mode')=='group')
         assert(arg('--group-conf-floor')=='0.5' and arg('--group-coverage-floor')=='0.7')
+        assert(arg('--group-relaxed-floor')=='0.5' and arg('--group-pair-floor')=='0.2')
+        assert(arg('--group-join')=='0.3' and arg('--group-leave')=='0.7' and arg('--group-switch')=='0.6')
         local before=#crops
         handlers['reframe-mode']('follow')
         assert(#crops==before)
@@ -127,6 +129,40 @@ local ok,err=pcall(function()
         callbacks[starts](true,{status=0})
         handlers['reframe-mode']('follow')
         assert(values['user-data/reframe'].mode=='follow')
+    end
+    do
+        -- Debug overlay: stored while stopped, passed at launch, forwarded
+        -- after hello, and never sent for an unknown value or a repeat.
+        assert(bindings.debug and bindings.debug.key=='Ctrl+d')
+        assert(values['user-data/reframe'].debug==false)
+        bindings.debug.fn()
+        assert(values['user-data/reframe'].debug==true)
+        handlers['reframe-enable']()
+        local id=values['user-data/reframe'].session
+        local launch=launches[starts]
+        local function has(name)
+            for _,v in ipairs(launch) do if v==name then return true end end
+            return false
+        end
+        assert(has('--debug-osd'))
+        local before=#crops
+        handlers['reframe-debug']('off')
+        assert(#crops==before and values['user-data/reframe'].debug==false)
+        event(id,1,'hello')
+        assert(crops[#crops].type=='debug' and crops[#crops].enabled==false)
+        event(id,2,'state',{state='active'})
+        handlers['reframe-debug']('toggle')
+        assert(crops[#crops].type=='debug' and crops[#crops].enabled==true)
+        local sent=#crops
+        handlers['reframe-debug']('on')
+        handlers['reframe-debug']('sideways')
+        assert(#crops==sent and values['user-data/reframe'].debug==true)
+        handlers['reframe-debug']('off')
+        assert(crops[#crops].type=='debug' and crops[#crops].enabled==false)
+        handlers['reframe-stop']()
+        callbacks[starts](true,{status=0})
+        handlers['reframe-debug']('off')
+        assert(values['user-data/reframe'].debug==false)
     end
     handlers['reframe-enable']()
     local id=values['user-data/reframe'].session
