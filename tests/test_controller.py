@@ -88,6 +88,7 @@ def test_late_pan_reply_does_not_cost_another_output_frame(
         samples=[(0, 0.3, 1, "tracking")],
         pending=[],
         boxes={},
+        confidences={},
         prune=lambda t: None,
         preview=lambda: None,
     )

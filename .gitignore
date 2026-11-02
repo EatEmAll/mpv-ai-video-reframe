@@ -1,11 +1,56 @@
+# Environments and caches
 .venv/
-models/
-runs/
-dist/
-build/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+
+# Build output and local runtime data
+build/
+dist/
+runs/
+models/
 *.engine
 *.zip
+
+# Local clips, benchmark inputs and reference checkouts
+/samples/
+/refs/
+
+# Local agent tooling and worktrees (the media guard skill lives here)
+/.claude/
+
+# Media of any kind. This project handles video, so clips, audio, screenshots
+# and renders are always lying around, and none of it belongs in git history.
+# Project branding (assets/icon.svg, assets/reframe.ico) is not matched here.
+# Video
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+*.m4v
+*.wmv
+*.flv
+*.ts
+*.m2ts
+*.mpg
+*.mpeg
+# Audio
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+*.m4a
+*.opus
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.tif
+*.tiff
+*.heic

@@ -145,3 +145,43 @@ def score_identity(telemetry, truth):
         "identity_samples": len(labels),
         "pass": switches == 0 and wrong == 0 if coverage else None,
     }
+
+
+def score_group(rows, truth, floor=0.7, settle=1.0):
+    """Measure group framing against ground-truth person boxes.
+
+    ``rows`` holds ``{"t", "center", "visible"}`` camera samples and ``truth``
+    maps each ``t`` to the list of true person boxes. A sample is optimal when
+    the camera frames (at ``floor`` box coverage) as many people as the best
+    possible crop position could. Samples within ``settle`` seconds of a change
+    in the best achievable head-count are excluded: the camera is still panning.
+    """
+    from types import SimpleNamespace
+
+    from .group import coverage, fit
+
+    results = []
+    for row in rows:
+        people = [
+            SimpleNamespace(track_id=i, box=box, confidence=1.0)
+            for i, box in enumerate(truth[row["t"]])
+        ]
+        best = fit(people, row["visible"], floor)
+        best_count = len(best[1]) if best else 0
+        framed = sum(
+            coverage(p.box, row["center"], row["visible"]) >= floor - 1e-6
+            for p in people
+        )
+        results.append((row["t"], best_count, framed))
+    changes = [b[0] for a, b in zip(results, results[1:]) if a[1] != b[1]]
+    scored = [
+        r
+        for r in results
+        if not any(change <= r[0] < change + settle for change in changes)
+    ]
+    optimal = sum(framed >= best for _, best, framed in scored)
+    return {
+        "samples": len(scored),
+        "optimal_fraction": optimal / len(scored) if scored else None,
+        "max_framed_deficit": max((b - f for _, b, f in scored), default=0),
+    }

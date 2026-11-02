@@ -6,6 +6,29 @@ autostart=no
 toggle_key=Ctrl+r
 rate=10
 model=
+# Draw bounding boxes with detection confidence over the video; the starting state.
 debug_osd=no
+# Switches the overlay on or off during playback; empty disables the key.
+debug_key=Ctrl+d
 # Five-second status badge above the stock OSC; does not replace player controls.
 status_indicator=yes
+# Framing mode at startup: follow (one person) or group (fit everyone who fits).
+mode=follow
+# Switches follow/group during playback; empty disables the key.
+mode_key=Ctrl+g
+# Group mode: minimum detection confidence (0-1) for a person to count.
+group_conf_floor=0.5
+# Group mode: minimum fraction of a person's box width kept inside the crop (above 0, up to 1).
+group_coverage_floor=0.7
+# Group mode: to keep a more confident person, coverage may drop to this (above 0, up to 1).
+# Never higher than group_coverage_floor.
+group_relaxed_floor=0.5
+# The same for the two most confident people, so a tight crop can sit on the seam between
+# two close-ups. Never higher than group_relaxed_floor.
+group_pair_floor=0.2
+# Group mode delays, in seconds (0 to 30): a new person must be seen this long to count,
+group_join=0.3
+# a missing person is held at their last box this long,
+group_leave=0.7
+# and a clearly better group must be available this long before the camera moves to it.
+group_switch=0.6

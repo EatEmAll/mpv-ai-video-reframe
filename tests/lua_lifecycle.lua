@@ -4,6 +4,7 @@ local utils = require 'mp.utils'
 local handlers, callbacks, timers = {}, {}, {}
 local values, crops, now, starts = {}, {}, 0, 0
 local overlays, observers, timeouts = {}, {}, {}
+local bindings, launches = {}, {}
 local fake = {msg={error=function() end}}
 fake.get_property_native=function(k)
     if k == 'osd-dimensions' then return {w=1280,h=720} end
@@ -27,7 +28,7 @@ fake.set_property_native=function(k,v) values[k]=v; return true end
 fake.commandv=function(_, topic, raw) crops[#crops+1]=utils.parse_json(raw) end
 fake.register_script_message=function(k,fn) handlers[k]=fn end
 fake.register_event=function() end
-fake.add_key_binding=function() end
+fake.add_key_binding=function(key,name,fn) bindings[name]={key=key, fn=fn} end
 fake.add_timeout=function(delay,fn)
     if delay == 0 then fn(); return end
     local timer={at=now+delay, fn=fn, killed=false}
@@ -43,7 +44,7 @@ end
 fake.command_native_async=function(args,fn)
     assert(args.playback_only == false and args.detach == false)
     assert(args.args[2] == '-I' and args.args[3] == '-m')
-    starts=starts+1; callbacks[starts]=fn; return starts
+    starts=starts+1; callbacks[starts]=fn; launches[starts]=args.args; return starts
 end
 fake.abort_async_command=function(id) callbacks[id](false, {status=-1}, 'killed') end
 package.loaded.mp=fake
@@ -92,6 +93,76 @@ local ok,err=pcall(function()
         callbacks[i](true,{status=0})
         assert(values.panscan==.2 and values['video-align-x']==.3)
         assert(values['user-data/reframe'].state=='disabled')
+    end
+    do
+        -- Framing mode: stored while stopped, passed at launch, forwarded
+        -- after hello, and never sent for an unknown mode.
+        assert(bindings.mode and bindings.mode.key=='Ctrl+g')
+        assert(values['user-data/reframe'].mode=='follow')
+        bindings.mode.fn()
+        assert(values['user-data/reframe'].mode=='group')
+        handlers['reframe-enable']()
+        local id=values['user-data/reframe'].session
+        local launch=launches[starts]
+        local function arg(name)
+            for k,v in ipairs(launch) do if v==name then return launch[k+1] end end
+        end
+        assert(arg('--mode')=='group')
+        assert(arg('--group-conf-floor')=='0.5' and arg('--group-coverage-floor')=='0.7')
+        assert(arg('--group-relaxed-floor')=='0.5' and arg('--group-pair-floor')=='0.2')
+        assert(arg('--group-join')=='0.3' and arg('--group-leave')=='0.7' and arg('--group-switch')=='0.6')
+        local before=#crops
+        handlers['reframe-mode']('follow')
+        assert(#crops==before)
+        event(id,1,'hello')
+        assert(crops[#crops].type=='mode' and crops[#crops].mode=='follow')
+        event(id,2,'state',{state='active'})
+        assert(overlays[1].data:find('Reframe: ON',1,true) and not overlays[1].data:find('group',1,true))
+        handlers['reframe-mode']('toggle')
+        assert(crops[#crops].type=='mode' and crops[#crops].mode=='group')
+        assert(overlays[1].data:find('ON (group)',1,true))
+        local sent=#crops
+        handlers['reframe-mode']('group')
+        handlers['reframe-mode']('sideways')
+        assert(#crops==sent and values['user-data/reframe'].mode=='group')
+        handlers['reframe-stop']()
+        callbacks[starts](true,{status=0})
+        handlers['reframe-mode']('follow')
+        assert(values['user-data/reframe'].mode=='follow')
+    end
+    do
+        -- Debug overlay: stored while stopped, passed at launch, forwarded
+        -- after hello, and never sent for an unknown value or a repeat.
+        assert(bindings.debug and bindings.debug.key=='Ctrl+d')
+        assert(values['user-data/reframe'].debug==false)
+        bindings.debug.fn()
+        assert(values['user-data/reframe'].debug==true)
+        handlers['reframe-enable']()
+        local id=values['user-data/reframe'].session
+        local launch=launches[starts]
+        local function has(name)
+            for _,v in ipairs(launch) do if v==name then return true end end
+            return false
+        end
+        assert(has('--debug-osd'))
+        local before=#crops
+        handlers['reframe-debug']('off')
+        assert(#crops==before and values['user-data/reframe'].debug==false)
+        event(id,1,'hello')
+        assert(crops[#crops].type=='debug' and crops[#crops].enabled==false)
+        event(id,2,'state',{state='active'})
+        handlers['reframe-debug']('toggle')
+        assert(crops[#crops].type=='debug' and crops[#crops].enabled==true)
+        local sent=#crops
+        handlers['reframe-debug']('on')
+        handlers['reframe-debug']('sideways')
+        assert(#crops==sent and values['user-data/reframe'].debug==true)
+        handlers['reframe-debug']('off')
+        assert(crops[#crops].type=='debug' and crops[#crops].enabled==false)
+        handlers['reframe-stop']()
+        callbacks[starts](true,{status=0})
+        handlers['reframe-debug']('off')
+        assert(values['user-data/reframe'].debug==false)
     end
     handlers['reframe-enable']()
     local id=values['user-data/reframe'].session
