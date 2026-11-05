@@ -6,6 +6,10 @@ autostart=no
 toggle_key=Ctrl+r
 rate=10
 model=
+# Seconds allowed for the initial backend handshake and model initialization.
+# Cold disk/CUDA starts can take longer than a warm launch.
+startup_timeout=30
+loading_timeout=300
 # Draw bounding boxes with detection confidence over the video; the starting state.
 debug_osd=no
 # Switches the overlay on or off during playback; empty disables the key.

@@ -48,7 +48,11 @@ fake.command_native_async=function(args,fn)
 end
 fake.abort_async_command=function(id) callbacks[id](false, {status=-1}, 'killed') end
 package.loaded.mp=fake
-package.loaded['mp.options']={read_options=function(o) o.backend_dir=os.getenv('REFRAME_TEST_ROOT'); o.python_path='fake-python' end}
+local config = {}
+package.loaded['mp.options']={read_options=function(o)
+    o.backend_dir=os.getenv('REFRAME_TEST_ROOT'); o.python_path='fake-python'
+    for k,v in pairs(config) do o[k]=v end
+end}
 local original_info=utils.file_info
 utils.file_info=function() return {is_file=true} end
 local ok,err=pcall(function()
@@ -184,6 +188,61 @@ local ok,err=pcall(function()
     handlers['reframe-enable']();handlers['reframe-stop']()
     now=11;timers[1]()
     assert(values['user-data/reframe'].state=='disabled')
+    -- Cold startup gets the full handshake budget, then a specific error.
+    handlers['reframe-enable']()
+    local born=now
+    now=born+11;timers[1]()
+    assert(values['user-data/reframe'].state=='starting')
+    now=born+31;timers[1]()
+    assert(values['user-data/reframe'].reason:find('Backend handshake timed out',1,true))
+    callbacks[starts](true,{status=0})
+    -- Healthy loading can exceed the former 120s limit, but remains bounded.
+    handlers['reframe-enable']()
+    id=values['user-data/reframe'].session
+    event(id,1,'hello')
+    event(id,2,'state',{state='loading'})
+    local loading=now
+    for second=1,301 do
+        now=loading+second
+        -- Repeated loading reports must not restart the loading deadline.
+        event(id,2*second+1,'state',{state='loading'})
+        event(id,2*second+2,'heartbeat',{phase='loading',controller_progress=0,stalled=false})
+        timers[1]()
+        if second<=300 then assert(values['user-data/reframe'].state=='loading') end
+    end
+    assert(values['user-data/reframe'].reason:find('Model loading timed out after 300s',1,true))
+    callbacks[starts](true,{status=0})
+    -- A longer loading budget never masks a lost heartbeat.
+    handlers['reframe-enable']()
+    id=values['user-data/reframe'].session
+    event(id,1,'hello');event(id,2,'state',{state='loading'})
+    now=now+6;timers[1]()
+    assert(values['user-data/reframe'].reason:find('Backend heartbeat timed out',1,true))
+    callbacks[starts](true,{status=0})
+    -- User settings apply to the next enable, including validation.
+    config.startup_timeout=60;config.loading_timeout=600
+    handlers['reframe-enable']()
+    born=now;now=born+31;timers[1]()
+    assert(values['user-data/reframe'].state=='starting')
+    id=values['user-data/reframe'].session
+    event(id,1,'hello');event(id,2,'state',{state='loading'})
+    for second=1,301 do
+        now=born+31+second
+        event(id,second+2,'heartbeat',{phase='loading',controller_progress=0,stalled=false})
+        timers[1]()
+    end
+    assert(values['user-data/reframe'].state=='loading')
+    event(id,304,'state',{state='active'})
+    now=now+1;timers[1]()
+    assert(values['user-data/reframe'].state=='active')
+    handlers['reframe-stop']();callbacks[starts](true,{status=0})
+    for _,bad in ipairs({0,-1,math.huge,0/0}) do
+        config.loading_timeout=bad
+        local before=starts
+        handlers['reframe-enable']()
+        assert(starts==before and values['user-data/reframe'].state=='error')
+        assert(values['user-data/reframe'].reason:find('loading_timeout must be',1,true))
+    end
     -- The configuration opt-out removes this script's own overlay only.
     package.loaded['mp.options']={read_options=function(o)
         o.status_indicator=false

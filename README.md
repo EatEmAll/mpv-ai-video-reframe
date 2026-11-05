@@ -86,6 +86,12 @@ following. The main ones are `rate` (detections per second, 5 to 15), `autostart
 thresholds above are settings too, and [the example](mpv/reframe.conf.example) lists
 the rest.
 
+Cold starts allow 30 seconds for the backend handshake and 300 seconds for model
+loading. Set `startup_timeout` or `loading_timeout` (positive seconds) if your
+machine needs longer. Loading still requires heartbeats; a backend that stops
+sending them is stopped after five seconds. Timeout messages distinguish these
+three cases and include the session log directory.
+
 ## License
 
 **GNU AGPL-3.0-only**, copyright (C) 2026 Roman (EatEmAll) and contributors. See

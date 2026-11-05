@@ -4,6 +4,7 @@ local utils = require 'mp.utils'
 local options = require 'mp.options'
 local o = {backend_dir='', python_path='', autostart=false, toggle_key='Ctrl+r',
            rate=10, model='', debug_osd=false, status_indicator=true,
+           startup_timeout=30, loading_timeout=300,
            mode='follow', mode_key='Ctrl+g', debug_key='Ctrl+d',
            group_conf_floor=0.5, group_coverage_floor=0.7,
            group_relaxed_floor=0.5, group_pair_floor=0.2,
@@ -90,6 +91,7 @@ local function stop(reason)
 end
 local function fail(s, text)
     s.failure = text
+    mp.msg.error(text)
     stop(text)
     show(text)
 end
@@ -193,6 +195,12 @@ start = function()
             startup_error(name..' must be from 0 to 30 seconds'); return
         end
     end
+    for _,name in ipairs({'startup_timeout', 'loading_timeout'}) do
+        local value = o[name]
+        if type(value) ~= 'number' or value ~= value or value <= 0 or value == math.huge then
+            startup_error(name..' must be a finite positive number of seconds'); return
+        end
+    end
     if not utils.file_info(executable()) then startup_error('Python environment missing; prepare the backend first'); return end
     local function security(command, pipe, harden)
         local args = {executable(), '-I', '-m', 'reframe.security', command,
@@ -275,9 +283,12 @@ mp.add_periodic_timer(1, function()
         elseif now - s.stop_at > 10 and not s.reported then
             s.reported=true; show('Waiting for backend exit; another backend will not be started')
         end
-    elseif (not s.hello and now-s.born > 10) or (s.hello and now-s.last > 5) or
-           (s.loading and now-s.loading > 120) then
-        fail(s, 'Backend startup or heartbeat timed out; see '..s.output)
+    elseif not s.hello and now-s.born > o.startup_timeout then
+        fail(s, 'Backend handshake timed out after '..o.startup_timeout..'s; see '..s.output)
+    elseif s.hello and now-s.last > 5 then
+        fail(s, 'Backend heartbeat timed out after 5s; see '..s.output)
+    elseif s.loading and now-s.loading > o.loading_timeout then
+        fail(s, 'Model loading timed out after '..o.loading_timeout..'s; see '..s.output)
     end
 end)
 mp.add_key_binding(o.toggle_key ~= '' and o.toggle_key or nil, 'toggle', toggle)
