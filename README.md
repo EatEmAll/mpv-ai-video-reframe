@@ -32,6 +32,11 @@ for your GPU, which the extension then uses automatically. After changing GPU or
 TensorRT, delete `models/yolo26n.engine*` and rerun. The TensorRT build has only
 been verified on Windows, but it should work on Linux too.
 
+The engine is built with YOLO26's native NMS-free head. That skips importing
+torchvision at startup, which took several seconds on a cold start. An engine
+built by an earlier version still works but loads more slowly, so delete
+`models/yolo26n.engine*` and rerun setup with `--accel` to rebuild it.
+
 To uninstall, run `uv run --no-project scripts/plugin.py uninstall`.
 
 ## Usage
@@ -85,6 +90,17 @@ following. The main ones are `rate` (detections per second, 5 to 15), `autostart
 `toggle_key`, `mode`, `mode_key`, `debug_osd` and `debug_key`; the group-mode
 thresholds above are settings too, and [the example](mpv/reframe.conf.example) lists
 the rest.
+
+One background detector serves every player. The first `Ctrl+r` after a cold start
+loads the model into a small background process (about 1.2 GB of RAM plus some GPU
+memory). Any other mpv window connects to it in a fraction of a second, and each
+player keeps its own tracking, so several players can run in parallel and take
+turns on the GPU. The process exits after `detector_idle_timeout` seconds (600) with
+no player connected; 0 keeps it until you stop it or log out, and `shared_detector=no`
+gives every player its own private copy instead. After you update the extension or
+rebuild the engine, the next player starts a fresh detector and the old one exits
+when idle. Its log is `detector-*.log` in `%LOCALAPPDATA%\mpv-reframe-user` on
+Windows or `/tmp/mpv-reframe-<uid>` elsewhere.
 
 Cold starts allow 30 seconds for the backend handshake and 300 seconds for model
 loading. Set `startup_timeout` or `loading_timeout` (positive seconds) if your

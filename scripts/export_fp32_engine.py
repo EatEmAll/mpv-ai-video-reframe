@@ -19,6 +19,7 @@ def main():
     inspect_backend(Path(__file__).resolve().parents[1])
     from reframe.models import (
         configure_inference,
+        engine_metadata,
         load_yolo,
         record_engine,
         secure_tensorrt,
@@ -48,18 +49,31 @@ def main():
             batch=1,
             dynamic=False,
             simplify=False,
+            # nms=False keeps YOLO26's native NMS-free head in the graph. With the
+            # default (nms=None) Ultralytics exports raw predictions and imports
+            # torchvision on first use to run NMS, which costs seconds on a cold
+            # start and is not needed by the one-to-one head.
+            nms=False,
         )
     )
     if not path.is_file() or not path.stat().st_size:
         raise RuntimeError("Export produced no engine")
     try:
+        if engine_metadata(path).get("end2end") is not True:
+            raise RuntimeError(
+                "Ultralytics did not export the NMS-free head; the engine would "
+                "still import torchvision at startup"
+            )
         manifest = record_engine(weights, path)
         # record_engine's legacy default describes the older FP16 exporter.
         # Correct this newly built local artifact before exposing it to callers.
         # Hash/device/runtime trust checks are unchanged.
         data = json.loads(manifest.read_text(encoding="utf-8"))
         data.update(
-            precision="fp32", tf32_allowed=True, exporter="locked-ultralytics-fp32"
+            precision="fp32",
+            tf32_allowed=True,
+            exporter="locked-ultralytics-fp32",
+            end2end=True,
         )
         from plugin import atomic
 

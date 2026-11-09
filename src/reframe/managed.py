@@ -25,11 +25,18 @@ class BackendBusyError(RuntimeError):
 class Ownership:
     """An OS-released file lock; never unlink the lock inode during release."""
 
-    def __init__(self, pid):
-        if type(pid) is not int or pid <= 0:
-            raise ValueError("Invalid player PID")
+    def __init__(self, pid=None, *, name=None):
+        """Lock a player by PID, or any other single-instance resource by name."""
+        if name is None:
+            if type(pid) is not int or pid <= 0:
+                raise ValueError("Invalid player PID")
+            name, busy = str(pid), "Another reframe backend owns this player"
+        else:
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,120}", name):
+                raise ValueError("Invalid lock name")
+            busy = f"Another process already holds {name}"
         root = private_dir(runtime_root() / "locks")
-        path = trusted_path(root / f"{pid}.lock")
+        path = trusted_path(root / f"{name}.lock")
         flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
         fd = os.open(path, flags, 0o600)
         try:
@@ -59,7 +66,7 @@ class Ownership:
                 fcntl.flock(self.file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             self.file.close()
-            raise BackendBusyError("Another reframe backend owns this player") from None
+            raise BackendBusyError(busy) from None
 
     def close(self):
         self.file.close()
@@ -240,7 +247,7 @@ def run_managed(args):
     validate_backend_runtime(args.backend_dir)
     os.chdir(trusted_path(args.backend_dir))
     session = Session(args)
-    ipc = None
+    ipc = loader = None
     try:
         from .ipc import IPC
 
@@ -253,7 +260,18 @@ def run_managed(args):
         from .detector import DetectorLoader
 
         # Load while the user picks a video; usually ready before one arrives.
-        loader = DetectorLoader(args.model)
+        # The shared service keeps one model for every player; callers that build
+        # their own namespace get a private in-process detector unless they ask.
+        if getattr(args, "detector", "local") == "shared":
+            from .service import connect_detector
+
+            idle = getattr(args, "detector_idle", 600)
+            loader = DetectorLoader(
+                args.model,
+                factory=lambda path: connect_detector(path, args.backend_dir, idle),
+            )
+        else:
+            loader = DetectorLoader(args.model)
         session.state("waiting")
         while not session.stop.wait(0.1):
             if loader.error is not None:
@@ -321,4 +339,10 @@ def run_managed(args):
             if ipc:
                 ipc.close()
         finally:
-            session.close()
+            try:
+                if loader is not None and loader.detector is not None:
+                    close = getattr(loader.detector, "close", None)
+                    if close:
+                        close()
+            finally:
+                session.close()

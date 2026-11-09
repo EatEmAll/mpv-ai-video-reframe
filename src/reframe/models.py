@@ -122,6 +122,21 @@ def compatible_engine(engine, weights, capability, runtime):
         return False
 
 
+def engine_metadata(path):
+    """Read the JSON header Ultralytics writes before the serialized engine."""
+    with Path(path).open("rb") as file:
+        size = int.from_bytes(file.read(4), "little", signed=True)
+        if not 0 < size <= 1 << 20:
+            raise SecurityError("Engine metadata header is missing or oversized")
+        raw = file.read(size)
+    if len(raw) != size:
+        raise SecurityError("Engine metadata header is truncated")
+    data = strict_json(raw.decode("utf-8"), limit=1 << 20)
+    if not isinstance(data, dict):
+        raise SecurityError("Engine metadata header is not an object")
+    return data
+
+
 def select_model(explicit, capability):
     if explicit is not None:
         path = Path(explicit)

@@ -1,12 +1,57 @@
-"""YOLO26n + ByteTrack adapter; the model is owned by one worker."""
+"""YOLO26n + ByteTrack: a shareable model engine and a per-video tracker."""
 
 import os
 from pathlib import Path
 from threading import Event, Thread
 from types import SimpleNamespace
 
+TRACKER_CONFIG = Path(__file__).parent / "trackers/bytetrack_reframe.yaml"
 
-class Detector:
+
+def make_tracker():
+    """A ByteTrack instance for one video; IDs are per tracker, so they can coexist."""
+    import yaml
+    from ultralytics.trackers.byte_tracker import BYTETracker
+
+    return BYTETracker(SimpleNamespace(**yaml.safe_load(TRACKER_CONFIG.read_text())))
+
+
+def detections(raw, tracks, frame):
+    """Match tracker output to its raw detection and describe the torso colours."""
+    import cv2
+
+    from .timeline import Det
+
+    result = []
+    h, w = frame.shape[:2]
+    for track in tracks:
+        index = int(track[-1])
+        i = int(track[4])
+        box = raw.xyxyn[index].tolist()
+        c = float(raw.conf[index])
+        x0, y0, x1, y1 = box
+        torso = frame[
+            max(0, int((y0 + 0.15 * (y1 - y0)) * h)) : min(
+                h, int((y0 + 0.65 * (y1 - y0)) * h)
+            ),
+            max(0, int((x0 + 0.2 * (x1 - x0)) * w)) : min(
+                w, int((x0 + 0.8 * (x1 - x0)) * w)
+            ),
+        ]
+        appearance = ()
+        if torso.size:
+            hsv = cv2.cvtColor(torso, cv2.COLOR_BGR2HSV)
+            hist = cv2.calcHist([hsv], [0, 1], None, [16, 8], [0, 180, 0, 256]).ravel()
+            hist = hist / max(float(hist.sum()), 1)
+            appearance = tuple(float(v) for v in hist)
+        result.append(Det(int(i), tuple(float(v) for v in box), float(c), appearance))
+    return result
+
+
+class Engine:
+    """The loaded model alone. It keeps no per-video state, so one engine can
+    serve several trackers as long as the caller serializes ``predict``."""
+
     def __init__(self, model_path=None):
         from .models import configure_inference
 
@@ -14,8 +59,6 @@ class Detector:
         os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
         import numpy as np
         import torch
-        import yaml
-        from ultralytics.trackers.byte_tracker import BYTETracker
 
         from .models import load_yolo, select_model
 
@@ -31,21 +74,9 @@ class Detector:
                 "TensorRT engines require CUDA; select local .pt weights"
             )
         self.model = load_yolo(self.model_path)
-        config = yaml.safe_load(
-            (Path(__file__).parent / "trackers/bytetrack_reframe.yaml").read_text()
-        )
-        self.tracker = BYTETracker(SimpleNamespace(**config))
-        self.detect(np.zeros((360, 640, 3), dtype=np.uint8))
-        self.reset()
+        self.predict(np.zeros((360, 640, 3), dtype=np.uint8))
 
-    def reset(self):
-        self.tracker.reset()
-
-    def detect(self, frame):
-        import cv2
-
-        from .timeline import Det
-
+    def predict(self, frame):
         result = self.model.predict(
             frame,
             classes=[0],
@@ -55,36 +86,39 @@ class Detector:
             device=self.device,
             verbose=False,
         )[0]
-        raw = result.boxes.cpu().numpy()
-        tracks = self.tracker.update(raw, frame)
-        detections = []
-        h, w = frame.shape[:2]
-        for track in tracks:
-            index = int(track[-1])
-            i = int(track[4])
-            box = raw.xyxyn[index].tolist()
-            c = float(raw.conf[index])
-            x0, y0, x1, y1 = box
-            torso = frame[
-                max(0, int((y0 + 0.15 * (y1 - y0)) * h)) : min(
-                    h, int((y0 + 0.65 * (y1 - y0)) * h)
-                ),
-                max(0, int((x0 + 0.2 * (x1 - x0)) * w)) : min(
-                    w, int((x0 + 0.8 * (x1 - x0)) * w)
-                ),
-            ]
-            appearance = ()
-            if torso.size:
-                hsv = cv2.cvtColor(torso, cv2.COLOR_BGR2HSV)
-                hist = cv2.calcHist(
-                    [hsv], [0, 1], None, [16, 8], [0, 180, 0, 256]
-                ).ravel()
-                hist = hist / max(float(hist.sum()), 1)
-                appearance = tuple(float(v) for v in hist)
-            detections.append(
-                Det(int(i), tuple(float(v) for v in box), float(c), appearance)
-            )
-        return detections
+        return result.boxes.cpu().numpy()
+
+
+class Detector(Engine):
+    """An engine with its own tracker, for a player that owns the model."""
+
+    def __init__(self, model_path=None):
+        super().__init__(model_path)
+        self.tracker = make_tracker()
+        self.reset()
+
+    def reset(self):
+        self.tracker.reset()
+
+    def detect(self, frame):
+        raw = self.predict(frame)
+        return detections(raw, self.tracker.update(raw, frame), frame)
+
+
+class TrackedStream:
+    """One video's tracker on an engine shared with other videos."""
+
+    def __init__(self, engine, lock):
+        self.engine, self.lock = engine, lock
+        self.tracker = make_tracker()
+
+    def reset(self):
+        self.tracker.reset()
+
+    def detect(self, frame):
+        with self.lock:
+            raw = self.engine.predict(frame)
+        return detections(raw, self.tracker.update(raw, frame), frame)
 
 
 class DetectorLoader:

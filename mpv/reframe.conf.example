@@ -10,6 +10,13 @@ model=
 # Cold disk/CUDA starts can take longer than a warm launch.
 startup_timeout=30
 loading_timeout=300
+# One background process keeps the detector loaded for every mpv window, so only
+# the first player after a cold start waits for the model. no: each player loads
+# its own copy, as before.
+shared_detector=yes
+# Seconds the shared detector stays loaded (about 3 GB of RAM and some GPU memory)
+# after the last player closes. 0 keeps it until you stop the process or log out.
+detector_idle_timeout=600
 # Draw bounding boxes with detection confidence over the video; the starting state.
 debug_osd=no
 # Switches the overlay on or off during playback; empty disables the key.
