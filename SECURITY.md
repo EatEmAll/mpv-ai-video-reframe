@@ -30,7 +30,8 @@ Run as a normal user. Trust the Lua script, Python interpreter/environment,
 backend, configuration, mpv/FFmpeg, dependencies, weights and locally built
 engines as executable inputs. Session IDs reject stale messages; they are not
 authentication. mpv IPC grants local player control to anyone who can connect.
-Never forward the pipe/socket, expose TCP IPC, or run the backend as a service.
+Never forward the pipe/socket, expose TCP IPC, or run the backend as a network
+service. The only background process is the local shared detector described below.
 
 Use a private backend/configuration tree that other users cannot modify. Checks
 reject unsafe ownership, write permissions, links/reparse points and hard-linked
@@ -44,6 +45,21 @@ Ownership checks and `-I` do not resolve those compatibility failures.
 The interpreter must already be trusted before it can run the checker; this is
 defense in depth, not protection against a compromised installation or same-user
 malware. Administrators/root/SYSTEM and processes under your account are trusted.
+
+The shared detector (`reframe serve`) is a per-user background process that the
+first player starts and that exits after `detector_idle_timeout` seconds without a
+player. It listens only on a Windows named pipe or on a Unix socket in the private
+per-user runtime directory, never on TCP. Before either side sends anything else,
+the two prove they hold a random 32-byte key kept in that private directory
+(mutual HMAC-SHA256 challenge), so another account that can reach the endpoint
+cannot read frames or use the GPU. On Windows the pipe has the default security
+descriptor and the key is what excludes other accounts; on Unix the peer must also
+be your user. Messages are length-bounded fixed binary layouts, never pickle, and
+frames are limited to 4096 by 4096. A connection that stalls during authentication
+holds one service thread for five seconds. The service runs the same code, weights
+and engine as an in-process backend, so it is trusted exactly like them, and
+processes under your account can talk to it just as they can reach mpv's IPC.
+`shared_detector=no` restores one private model per player.
 
 `doctor` is the explicit model-download step. It checks the pinned upstream
 YOLO26n checksum before loading. Unknown `.pt` weights, YAML, ONNX and other

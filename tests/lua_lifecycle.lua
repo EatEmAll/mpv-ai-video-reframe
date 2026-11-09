@@ -243,6 +243,30 @@ local ok,err=pcall(function()
         assert(starts==before and values['user-data/reframe'].state=='error')
         assert(values['user-data/reframe'].reason:find('loading_timeout must be',1,true))
     end
+    -- The shared detector is the default and its settings reach the backend.
+    local function flag(args, name)
+        for i,v in ipairs(args) do if v==name then return args[i+1] end end
+    end
+    config.loading_timeout=300 -- the loop above left an invalid value in the shared table
+    local before=starts
+    handlers['reframe-enable']()
+    assert(starts==before+1)
+    assert(flag(launches[starts],'--detector')=='shared' and flag(launches[starts],'--detector-idle')=='600')
+    handlers['reframe-stop']();callbacks[starts](true,{status=0})
+    config.shared_detector=false; config.detector_idle_timeout=0
+    before=starts
+    handlers['reframe-enable']()
+    assert(starts==before+1)
+    assert(flag(launches[starts],'--detector')=='local' and flag(launches[starts],'--detector-idle')=='0')
+    handlers['reframe-stop']();callbacks[starts](true,{status=0})
+    for _,bad in ipairs({-1,86401,1.5,math.huge,0/0}) do
+        config.detector_idle_timeout=bad
+        before=starts
+        handlers['reframe-enable']()
+        assert(starts==before and values['user-data/reframe'].state=='error')
+        assert(values['user-data/reframe'].reason:find('detector_idle_timeout must be',1,true))
+    end
+    config.shared_detector=true; config.detector_idle_timeout=600
     -- The configuration opt-out removes this script's own overlay only.
     package.loaded['mp.options']={read_options=function(o)
         o.status_indicator=false

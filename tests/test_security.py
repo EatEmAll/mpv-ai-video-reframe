@@ -510,7 +510,10 @@ def test_real_lua_preflight_backend_wait_and_stop(tmp_path):
             "--log-file=" + str(log),
             "--script=" + str(ROOT / "mpv/reframe.lua"),
             "--script=" + str(ROOT / "tests/lua_security_integration.lua"),
-            "--script-opts=reframe-backend_dir=" + str(ROOT),
+            # The backend may start the shared detector; let it exit right away.
+            "--script-opts=reframe-backend_dir="
+            + str(ROOT)
+            + ",reframe-detector_idle_timeout=1",
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

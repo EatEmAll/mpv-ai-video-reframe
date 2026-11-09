@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -70,6 +71,16 @@ def _seconds(text):
     if not 0 <= value <= 30:
         raise argparse.ArgumentTypeError(f"must be within [0, 30] seconds: {text}")
     return value
+
+
+def _idle_seconds(text):
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a number: {text}") from None
+    if not 0 <= value <= 86400:
+        raise argparse.ArgumentTypeError(f"must be within [0, 86400] seconds: {text}")
+    return int(value)
 
 
 def main():
@@ -145,11 +156,45 @@ def main():
         help="Explicit model path; otherwise prefer a compatible verified TensorRT engine",
     )
     cmd.add_argument(
+        "--detector",
+        choices=("shared", "local"),
+        default="shared",
+        help="shared: one background service keeps the model for every player; "
+        "local: load a private copy in this process",
+    )
+    cmd.add_argument(
+        "--detector-idle",
+        type=_idle_seconds,
+        default=600,
+        help="Shared detector: seconds the service stays loaded with no player "
+        "(0 keeps it running)",
+    )
+    cmd.add_argument(
         "--seconds",
         type=float,
         help="Stop sidecar after this many seconds (smoke tests)",
     )
+    service = sub.add_parser(
+        "serve", help="Shared detector service; players start it when needed"
+    )
+    service.add_argument("--backend-dir", required=True)
+    service.add_argument("--model")
+    service.add_argument("--idle-timeout", type=_idle_seconds, default=600)
     args = parser.parse_args()
+    if args.command == "serve":
+        try:
+            validate_backend_runtime(args.backend_dir)
+        except ValueError as error:
+            parser.error(str(error))
+        from .security import trusted_path
+        from .service import serve
+
+        os.chdir(trusted_path(args.backend_dir))
+        sys.stdout.flush()
+        code = serve(args.backend_dir, args.model, args.idle_timeout)
+        # Daemon threads may be blocked in a pipe accept; do not wait for them.
+        sys.stderr.flush()
+        os._exit(code)
     if args.command == "attach":
         context = (args.session_id, args.lua_client, args.backend_dir, args.output_dir)
         if args.managed != all(context) or (not args.managed and any(context)):

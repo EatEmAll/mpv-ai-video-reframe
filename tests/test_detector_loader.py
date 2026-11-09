@@ -98,3 +98,65 @@ def test_load_failure_is_reported_without_a_video(monkeypatch, tmp_path):
     with pytest.raises(RuntimeError, match="load failed"):
         managed.run_managed(args)
     assert sessions[0].sent == ["error"]
+
+
+def run_failing_backend(monkeypatch, tmp_path, **options):
+    from reframe import ipc as ipc_module
+    from reframe import runtime
+
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models/yolo26n.pt").write_bytes(b"weights")
+    monkeypatch.chdir(tmp_path)
+    sessions = []
+
+    def session(args):
+        sessions.append(FakeSession(args))
+        return sessions[-1]
+
+    monkeypatch.setattr(managed, "Session", session)
+    monkeypatch.setattr(ipc_module, "IPC", FakeIPC)
+    monkeypatch.setattr(runtime, "validate_backend_runtime", lambda path: None)
+    monkeypatch.setattr(managed, "trusted_path", lambda path: path)
+    args = SimpleNamespace(
+        backend_dir=str(tmp_path), pipe="test", model=None, **options
+    )
+    return args, sessions
+
+
+def test_shared_detector_connects_through_the_service(monkeypatch, tmp_path):
+    from reframe import service
+
+    calls = []
+
+    def connect(model, backend_dir, idle):
+        calls.append((model, backend_dir, idle))
+        raise RuntimeError("service unavailable")
+
+    monkeypatch.setattr(service, "connect_detector", connect)
+    args, sessions = run_failing_backend(
+        monkeypatch, tmp_path, detector="shared", detector_idle=42
+    )
+    with pytest.raises(RuntimeError, match="service unavailable"):
+        managed.run_managed(args)
+    assert calls == [(None, str(tmp_path), 42)]
+    assert sessions[0].sent == ["error"]
+
+
+def test_local_detector_never_touches_the_service(monkeypatch, tmp_path):
+    from reframe import service
+
+    def forbidden(*args):
+        raise AssertionError("local mode must not start the shared service")
+
+    def failing(path):
+        raise RuntimeError("load failed")
+
+    monkeypatch.setattr(service, "connect_detector", forbidden)
+    monkeypatch.setattr(
+        detector_module,
+        "DetectorLoader",
+        lambda path: DetectorLoader(path, factory=failing),
+    )
+    args, _ = run_failing_backend(monkeypatch, tmp_path, detector="local")
+    with pytest.raises(RuntimeError, match="load failed"):
+        managed.run_managed(args)

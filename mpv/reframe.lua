@@ -5,6 +5,7 @@ local options = require 'mp.options'
 local o = {backend_dir='', python_path='', autostart=false, toggle_key='Ctrl+r',
            rate=10, model='', debug_osd=false, status_indicator=true,
            startup_timeout=30, loading_timeout=300,
+           shared_detector=true, detector_idle_timeout=600,
            mode='follow', mode_key='Ctrl+g', debug_key='Ctrl+d',
            group_conf_floor=0.5, group_coverage_floor=0.7,
            group_relaxed_floor=0.5, group_pair_floor=0.2,
@@ -201,6 +202,12 @@ start = function()
             startup_error(name..' must be a finite positive number of seconds'); return
         end
     end
+    do
+        local idle = o.detector_idle_timeout
+        if type(idle) ~= 'number' or idle ~= idle or idle < 0 or idle > 86400 or idle % 1 ~= 0 then
+            startup_error('detector_idle_timeout must be a whole number of seconds from 0 to 86400'); return
+        end
+    end
     if not utils.file_info(executable()) then startup_error('Python environment missing; prepare the backend first'); return end
     local function security(command, pipe, harden)
         local args = {executable(), '-I', '-m', 'reframe.security', command,
@@ -238,6 +245,9 @@ start = function()
         '--output-dir', s.output, '--rate', tostring(o.rate)}
     if o.model ~= '' then args[#args+1]='--model'; args[#args+1]=o.model end
     if debug then args[#args+1]='--debug-osd' end
+    -- One background service keeps the model for every player; "no" loads a private copy.
+    args[#args+1]='--detector'; args[#args+1]=o.shared_detector and 'shared' or 'local'
+    args[#args+1]='--detector-idle'; args[#args+1]=string.format('%d', o.detector_idle_timeout)
     s.debug = debug
     s.mode = mode
     for _, v in ipairs({'--mode', mode, '--group-conf-floor', tostring(o.group_conf_floor),
