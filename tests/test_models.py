@@ -29,3 +29,27 @@ def test_vulnerable_tensorrt_never_accepted():
     for version in ("10.16.1.11", "11.1.0", "unknown", "11"):
         assert not secure_tensorrt(version)
     assert secure_tensorrt("11.2.1.2")
+
+
+def test_blocked_tensorrt_falls_back_to_pytorch_weights(tmp_path, monkeypatch):
+    import builtins
+    import importlib.util
+
+    from reframe import models
+
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "yolo26n.engine").write_bytes(b"engine")
+    weights = tmp_path / "models" / "yolo26n.pt"
+    weights.write_bytes(b"weights")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(models, "verify_weights", lambda path: path)
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    real_import = builtins.__import__
+
+    def blocked(name, *args, **kwargs):
+        if name == "tensorrt":
+            raise ImportError("An Application Control policy has blocked this file.")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked)
+    assert models.select_model(None, (8, 6)) == models.Path("models/yolo26n.pt")
