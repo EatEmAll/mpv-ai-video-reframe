@@ -161,8 +161,15 @@ def select_model(explicit, capability):
         and engine.is_file()
         and importlib.util.find_spec("tensorrt")
     ):
-        import tensorrt
-
+        try:
+            import tensorrt
+        except ImportError as error:
+            # Windows Smart App Control / WDAC can block the unsigned tensorrt
+            # extension module even though the package is installed.
+            logging.getLogger(__name__).warning(
+                "TensorRT cannot be loaded (%s); using PyTorch weights", error
+            )
+            return weights
         if compatible_engine(engine, weights, capability, tensorrt.__version__):
             return engine
         logging.getLogger(__name__).warning(
