@@ -535,7 +535,10 @@ def spawn_service(backend_dir, model, idle_timeout, print_id):
         )
         if os.name != "nt":
             return subprocess.Popen(command, start_new_session=True, **options)
-        detached = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        # CREATE_NO_WINDOW, not DETACHED_PROCESS: the venv python.exe is a launcher
+        # that starts the real interpreter, and a console child of a console-less
+        # parent would get its own visible window.
+        detached = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
         try:
             # Outlive a player whose job object would otherwise kill its children.
             return subprocess.Popen(
